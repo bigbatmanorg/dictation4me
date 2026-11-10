@@ -1,0 +1,42 @@
+name: Test and build
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.12', '3.13']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Native test dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libportaudio2
+      - run: uv sync --group dev
+      - run: uv run ruff check .
+      - name: Tests (Linux, including TTK under Xvfb)
+        if: runner.os == 'Linux'
+        run: DICTATION4ME_TEST_X11=1 xvfb-run -a uv run pytest -q
+      - name: Tests (Windows)
+        if: runner.os == 'Windows'
+        run: uv run pytest -q
+      - run: uv build
+      - name: Installed wheel smoke test
+        shell: bash
+        run: |
+          uv tool install dist/*.whl
+          uv run python scripts/verify_installed.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.os }}-py${{ matrix.python }}
+          path: dist/*

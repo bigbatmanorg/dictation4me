@@ -1,0 +1,6 @@
+include LICENSE README.md config.example.toml
+recursive-include src/dictation4me/assets *.svg *.ico
+recursive-include tests *.py
+recursive-include docs *.md *.txt
+recursive-include scripts *.py
+global-exclude *.pyc *.pyo

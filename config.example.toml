@@ -1,0 +1,28 @@
+# Dictation4me — contains credentials when api_key is set.
+
+[service]
+base_url = "http://localhost:4000/v1"
+model = "whisper-1"
+language = "auto"
+api_key_env = "LITELLM_API_KEY"
+api_key = ""
+timeout_seconds = 120
+endpoint_path = ""
+
+[audio]
+device = "default"
+max_seconds = 300
+max_buffer_mb = 128
+
+[output]
+auto_paste = true
+paste_shortcut = "ctrl+v"
+paste_delay_ms = 250
+backend = "auto"
+ydotool_socket = ""
+ydotool_autostart = true
+
+[desktop]
+hotkey = "ctrl+alt+d"
+hotkey_backend = "auto"
+autostart = true
