@@ -1,10 +1,16 @@
-from __future__ import annotations
 import pytest
+
+from dictation4me.paths import Paths
+
+
+@pytest.fixture
+def app_paths(tmp_path, monkeypatch):
+    monkeypatch.setenv("DICTATION4ME_HOME", str(tmp_path / "app"))
+    return Paths.discover().init()
 
 
 @pytest.fixture(autouse=True)
-def isolated_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("DICTATION4ME_HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("LITELLM_API_KEY", raising=False)
-    monkeypatch.delenv("YDOTOOL_SOCKET", raising=False)
-    return tmp_path / "home"
+def _no_real_desktop_bindings(monkeypatch):
+    # A service subprocess spawned by a test inherits the developer's graphical
+    # session; never let it register or rebind the real global shortcut.
+    monkeypatch.setenv("DICTATION4ME_NO_HOTKEY", "1")

@@ -1,4 +1,3 @@
-"""A small desktop client for externally hosted speech recognition."""
-__version__ = "0.1.0"
-APP_ID = "io.github.dictation4me"
-APP_NAME = "Dictation4me"
+"""Dictation4me — local-first native notebook and dictation assistant."""
+__version__ = "0.2.0"
+APP_ID = "org.bigbatmanorg.dictation4me"

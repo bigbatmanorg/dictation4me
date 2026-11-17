@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bigbatmanorg/dictation4me/spec/ipc.schema.json",
+  "title": "Dictation4me IPC messages v1",
+  "description": "Envelope contract. Individual params/results are validated with explicit command-specific code schemas.",
+  "oneOf": [
+    {"$ref":"#/$defs/request"},
+    {"$ref":"#/$defs/reply"}
+  ],
+  "$defs": {
+    "request": {
+      "type":"object","additionalProperties":false,
+      "required":["id","version","command","params","auth"],
+      "properties": {
+        "id":{"type":"string","minLength":1,"maxLength":80},
+        "version":{"const":1},
+        "command":{"type":"string","pattern":"^[a-z][a-z0-9_.]{0,63}$"},
+        "params":{"type":"object","maxProperties":50},
+        "auth":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+        "idempotency_key":{"type":"string","minLength":8,"maxLength":128}
+      }
+    },
+    "reply": {
+      "type":"object","additionalProperties":false,
+      "required":["id","version","ok"],
+      "properties": {
+        "id":{"type":"string","minLength":1,"maxLength":80},
+        "version":{"const":1},
+        "ok":{"type":"boolean"},
+        "result":{"type":"object"},
+        "error":{"type":"object","additionalProperties":false,"required":["code","message"],"properties":{
+          "code":{"type":"string","maxLength":80},
+          "message":{"type":"string","maxLength":500},
+          "retryable":{"type":"boolean"}
+        }}
+      },
+      "allOf":[{"if":{"properties":{"ok":{"const":true}}},"then":{"required":["result"]},"else":{"required":["error"]}}]
+    }
+  }
+}

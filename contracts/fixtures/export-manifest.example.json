@@ -1,0 +1,14 @@
+{
+  "format":"dictation4me-export",
+  "version":1,
+  "created_at":"2026-11-16T16:00:00Z",
+  "notes":[{
+    "id":"example-note-id",
+    "title":"Example note",
+    "path":"notes/example-note-id.md",
+    "folder":"Architecture",
+    "tags":["decision"],
+    "revision_id":"example-revision-id"
+  }],
+  "files":[]
+}

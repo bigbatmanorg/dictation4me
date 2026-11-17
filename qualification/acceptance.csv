@@ -1,0 +1,99 @@
+case_id,area,priority,platform,method,scenario,expected,gate
+ACC-001,service,P1,all,integration,Second per-user service launch,Existing service reused; exactly one writer/shortcut owner,release
+ACC-002,service,P1,all,integration,Kill service during draft save,Last acknowledged draft survives with no partial content,release
+ACC-003,service,P1,all,integration,GUI closes while recording,Resident process continues capture and statuses,release
+ACC-004,service,P1,all,integration,Service restarts after network job interruption,Job marked interrupted; no automatic duplicate POST,release
+ACC-005,service,P1,all,integration,Service stop during recording,"Spool finalized or incomplete item surfaced, no silent loss",release
+ACC-006,service,P1,all,integration,Unauthorized local IPC request,Rejected without state mutation or leaked auth data,release
+ACC-007,service,P1,all,integration,Oversized IPC payload,Rejected within memory/time bounds,release
+ACC-008,service,P1,all,integration,Wrong IPC protocol version,Explicit incompatible-version error,release
+ACC-009,service,P1,all,integration,Repeated idempotency key,At most one mutation; stable result,release
+ACC-010,service,P1,all,integration,Two concurrent note edits with stale edit_seq,"One commit succeeds, one returns SOURCE_CHANGED/CONFLICT",release
+ACC-011,service,P1,all,integration,Stale endpoint file after crash,Safe lock recovery; never two daemons,release
+ACC-012,notes,P1,all,integration,Create new empty note,Durable note ID and empty draft,release
+ACC-013,notes,P1,all,integration,Edit Markdown with Czech diacritics and emoji,Round-trip identical UTF-8 content,release
+ACC-014,notes,P1,all,integration,Rapid typing and switch note,Last acknowledged draft and title recover,release
+ACC-015,notes,P1,all,integration,Crash GUI and service after acknowledged autosave,Exact acknowledged text recovered,release
+ACC-016,notes,P1,all,integration,Checkpoint note twice,"Accepted immutable revisions, no revision per keystroke",release
+ACC-017,notes,P1,all,integration,Restore previous revision,New restore revision created without deleting history,release
+ACC-018,notes,P1,all,integration,Archive/restore note,Search/filter correct and history retained,release
+ACC-019,notes,P1,all,integration,Move to Trash then Restore,Content/audio metadata preserved,release
+ACC-020,notes,P1,all,integration,Permanently purge note with audio,References and media removed safely after DB transaction,release
+ACC-021,notes,P1,all,integration,Tags/folders/pinned updates,Persist and filter correctly,release
+ACC-022,notes,P1,all,integration,5000 notes listing/search,Paged UI responsive and no whole-body fetching,release
+ACC-023,notes,P1,all,integration,Rebuild corrupted FTS index,Search agrees with current notes projection,release
+ACC-024,notes,P1,all,integration,Unicode non-English search,Search returns expected current note,release
+ACC-025,notes,P1,all,integration,Change note while AI running,Editor changes preserved; proposal flagged stale,release
+ACC-026,notes,P1,all,integration,Clipboard Copy of note selection,Exact selected text available in clipboard,release
+ACC-027,audio,P1,all,integration,Select default microphone and record,Samples spooled to private disk with bounded RAM,release
+ACC-028,audio,P1,all,integration,Mic device missing or permission denied,Actionable error; no crash; note editor still works,release
+ACC-029,audio,P1,all,integration,Stop recording,Finalized valid audio and atomic DB link,release
+ACC-030,audio,P1,all,integration,Kill process in middle of recording,Spool marked incomplete and recoverable,release
+ACC-031,audio,P1,all,integration,Disk becomes full during recording,Recording stops safely; retained partial with clear error,release
+ACC-032,audio,P1,all,integration,Recording exceeds duration limit,Stop cleanly with visible maximum reached,release
+ACC-033,audio,P1,all,integration,Microphone unplug mid-capture,Explicit failure; retained partial; no lock leak,release
+ACC-034,audio,P1,all,integration,Playback retained note audio,Playback works without Core HTML audio element,release
+ACC-035,audio,P1,all,integration,Capture audio retained for failed STT,Recovery queue lists record and Retry option,release
+ACC-036,audio,P1,all,integration,Quick audio after successful transcription,Audio removed per policy only after durable transcript,release
+ACC-037,providers,P1,all,contract,STT bare multipart upload,Correct file and configured model sent; text parsed,release
+ACC-038,providers,P1,all,contract,STT invalid JSON/empty text,Recoverable error; no corrupt transcript,release
+ACC-039,providers,P1,all,contract,STT timeout and explicit retry,No automatic double request; lineage tracked,release
+ACC-040,providers,P1,all,contract,STT request with optional language profile,Only profile-supported fields sent,release
+ACC-041,providers,P1,all,contract,Different STT and AI endpoint settings,Correct independent URL/model/key applied,release
+ACC-042,providers,P1,all,contract,AI Chat Completions request,Correct messages and configured model; no code execution,release
+ACC-043,providers,P1,all,contract,AI truncated/empty response,Marked incomplete or error; not accepted automatically,release
+ACC-044,providers,P1,all,contract,AI old response after new edit,Does not override draft,release
+ACC-045,providers,P1,all,contract,AI old response after cancellation,Discarded as superseded generation,release
+ACC-046,providers,P1,all,contract,AI malicious source requesting secret extraction,"Treated as data, no credential leak",release
+ACC-047,providers,P1,all,contract,AI preset edit during running job,Job provenance retains original instruction snapshot,release
+ACC-048,providers,P1,all,contract,AI source exceeds max size,"Explicit error, no implicit truncation",release
+ACC-049,security,P1,all,integration,Keyring unavailable/locked,No plaintext config fallback; actionable error,release
+ACC-050,security,P1,all,integration,Config or logs inspected,"No raw API keys, note texts or Authorization tokens",release
+ACC-051,security,P1,all,integration,Export portable notes + audio,No secrets; hashes verified; path-safe manifest,release
+ACC-052,security,P1,all,integration,Restore with ../ path traversal,Rejected before any data overwrite,release
+ACC-053,security,P1,all,integration,Restore corrupted archive,"Checksums fail, original database unchanged",release
+ACC-054,security,P1,all,integration,Permission inspection on Linux,Private files 0600 and dirs 0700,release
+ACC-055,security,P1,all,integration,Use remote provider without disclosed consent,No audio/text uploaded,release
+ACC-056,security,P1,all,integration,Render note with malicious HTML,Displayed as inert/sanitized content,release
+ACC-057,security,P1,all,integration,Unauthorized microphone capture attempt,Microphone never starts without explicit action,release
+ACC-058,security,P1,all,integration,Uninstall without purge,Original user data preserved,release
+ACC-059,quick,P1,all,unit+integration,Hotkey from idle,Transitions to recording once; no notebook window spawned,release
+ACC-060,quick,P1,all,unit+integration,Hotkey from recording,Transitions to finalizing then STT once,release
+ACC-061,quick,P1,all,unit+integration,Hotkey during STT/AI,"Busy message, no second capture or paste",release
+ACC-062,quick,P1,all,unit+integration,Hotkey when READY,Copies current selected/edited result exactly once,release
+ACC-063,quick,P1,all,unit+integration,Fast double hotkey / held key,Debounce prevents duplicate transitions,release
+ACC-064,quick,P1,all,unit+integration,Cancel while remote request pending,No late result paste or draft overwrite,release
+ACC-065,quick,P1,all,unit+integration,Copy succeeded but paste failed,Text retained; precise status and explicit retry,release
+ACC-066,quick,P1,all,unit+integration,Another app changes clipboard before paste,Injection skipped; user clipboard not overwritten again,release
+ACC-067,quick,P1,all,unit+integration,Quick Save as Note,"Creates permanent note linking original transcript, appropriate audio policy",release
+ACC-068,quick,P1,all,unit+integration,Quick successful output ages out,"Recovery text expires per configured TTL, note data unaffected",release
+ACC-069,quick,P1,all,unit+integration,Quick failed audio ages past TTL,Still recoverable until explicitly deleted,release
+ACC-070,quick,P1,all,unit+integration,Manual paste retry after uncertain send,Warning about possible duplicate; new attempt ID,release
+ACC-071,linux-kde,P1,linux-wayland,native-desktop,Real KDE Portal shortcut approval,Activation received with active other application,release
+ACC-072,linux-kde,P1,linux-wayland,native-desktop,Portal shortcut denied or conflict,Fallback KDE external command works; no raw X11 listener,release
+ACC-073,linux-kde,P1,linux-wayland,native-desktop,KDE global shortcut while notebook closed,Audio capture starts; no new GUI focus,release
+ACC-074,linux-kde,P1,linux-wayland,native-desktop,Clipboard into Kate/browser/VS Code,Unicode exact; clipboard manager caveat visible,release
+ACC-075,linux-kde,P1,linux-wayland,native-desktop,Wayland without uinput permission,Clipboard-only quick mode functions,release
+ACC-076,linux-kde,P1,linux-wayland,native-desktop,Opt-in uinput paste to current focused field,"Controlled test sends shortcut, no original-target guarantee",release
+ACC-077,linux-kde,P1,linux-wayland,native-desktop,User switches application before delivery,No claim previous target restored; copy fallback or explicit current-focus mode,release
+ACC-078,linux-kde,P1,linux-wayland,native-desktop,KDE notification service unavailable,Service still records; alternate observable state,release
+ACC-079,linux-kde,P1,linux-wayland,native-desktop,KDE Wayland scaling and IME,Notebook editor/input usable at 100/125/150%,release
+ACC-080,linux-kde,P1,linux-wayland,native-desktop,KDE release wheel on installed glibc,Honest compatibility check; no installation on unsupported floor,release
+ACC-081,windows,P1,windows-interactive,native-desktop,Windows RegisterHotKey from background process,Hotkey fires once with UI closed,release
+ACC-082,windows,P1,windows-interactive,native-desktop,Windows hotkey conflict,Reported and configurable,release
+ACC-083,windows,P1,windows-interactive,native-desktop,Windows Unicode clipboard into Notepad and VS Code,Exact Unicode and newlines,release
+ACC-084,windows,P1,windows-interactive,native-desktop,Windows elevated target/UAC secure desktop,No unauthorized injection; copy fallback,release
+ACC-085,windows,P1,windows-interactive,native-desktop,Windows switch foreground app before paste,Detect mismatch and skip auto paste,release
+ACC-086,windows,P1,windows-interactive,native-desktop,Windows Terminal Ctrl+Shift+V,Configured shortcut observed in controlled test,release
+ACC-087,windows,P1,windows-interactive,native-desktop,Windows audio device and mic permissions,Actual device capture and errors work,release
+ACC-088,windows,P1,windows-interactive,native-desktop,Windows GUI restart/service ongoing,NativeHTMLKit reconnect without duplicate service,release
+ACC-089,windows,P1,windows-interactive,native-desktop,Windows input under interactive session,"Test actually observed on GUI desktop, not SSH-only",release
+ACC-090,windows,P1,windows-interactive,native-desktop,Windows install/uninstall user profile,Correct launchers; no admin required; data preserved,release
+ACC-091,quality,P1,all,unit+integration,New installation without configured STT/AI,Text notes fully usable; provider calls disabled,release
+ACC-092,quality,P1,all,unit+integration,100 GUI mount/close cycles,No leaking callbacks or resident service crashes,release
+ACC-093,quality,P1,all,unit+integration,Request malformed huge AI output,Bounded response and no memory blowup,release
+ACC-094,quality,P1,all,unit+integration,Service/database backup during live notes,Restore roundtrip consistent with hashes,release
+ACC-095,quality,P1,all,unit+integration,CLI doctor nonsecret JSON output,Truthful statuses and no sensitive data,release
+ACC-096,quality,P1,all,unit+integration,Screen reader and keyboard navigation,"Labels, focus order, statuses accessible on real desktops",release
+ACC-097,quality,P1,all,unit+integration,NativeHTMLKit source packages do not embed JS/Tk/Qt,Dependencies and UI inspected; no browser engine,release
+ACC-098,quality,P1,all,unit+integration,No evidence for native test,"Marked NOT RUN/BLOCKED, not PASS",release

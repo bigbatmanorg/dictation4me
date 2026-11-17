@@ -1,66 +1,66 @@
-"""Win32 clipboard, RegisterHotKey and SendInput; imported on Windows only at runtime."""
+"""Win32 Unicode clipboard, best-effort SendInput and RegisterHotKey."""
 from __future__ import annotations
 
-import asyncio
 import ctypes as C
-from ctypes import wintypes as W
 import threading
+import time
+from ctypes import wintypes as W
 
-from ..config import OutputConfig, parse_hotkey
+from ..errors import AppError
+
+CF_UNICODETEXT = 13
+GMEM_MOVEABLE = 0x0002
+WM_HOTKEY = 0x0312
+WM_QUIT = 0x0012
+KEYEVENTF_KEYUP = 0x0002
 
 
-class DesktopError(RuntimeError):
-    pass
-
-
-# Explicit Win32 widths also make ABI layout tests meaningful on non-Windows hosts.
 class KEYBDINPUT(C.Structure):
-    _fields_ = [("wVk", C.c_uint16), ("wScan", C.c_uint16), ("dwFlags", C.c_uint32),
-                ("time", C.c_uint32), ("dwExtraInfo", C.c_size_t)]
+    _fields_ = [("wVk", C.c_ushort), ("wScan", C.c_ushort), ("dwFlags", C.c_ulong),
+                ("time", C.c_ulong), ("dwExtraInfo", C.c_size_t)]
 
 
 class MOUSEINPUT(C.Structure):
-    _fields_ = [("dx", C.c_int32), ("dy", C.c_int32), ("mouseData", C.c_uint32),
-                ("dwFlags", C.c_uint32), ("time", C.c_uint32), ("dwExtraInfo", C.c_size_t)]
+    _fields_ = [("dx", C.c_long), ("dy", C.c_long), ("mouseData", C.c_ulong),
+                ("dwFlags", C.c_ulong), ("time", C.c_ulong), ("dwExtraInfo", C.c_size_t)]
 
 
 class HARDWAREINPUT(C.Structure):
-    _fields_ = [("uMsg", C.c_uint32), ("wParamL", C.c_uint16), ("wParamH", C.c_uint16)]
+    _fields_ = [("uMsg", C.c_ulong), ("wParamL", C.c_ushort), ("wParamH", C.c_ushort)]
 
 
-class InputUnion(C.Union):
+class _INPUTUNION(C.Union):
     _fields_ = [("ki", KEYBDINPUT), ("mi", MOUSEINPUT), ("hi", HARDWAREINPUT)]
 
 
 class INPUT(C.Structure):
     _anonymous_ = ("value",)
-    _fields_ = [("type", C.c_uint32), ("value", InputUnion)]
-
-
-def keyboard_events(shortcut: str):
-    keys = {"ctrl+v": [0x11, 0x56], "ctrl+shift+v": [0x11, 0x10, 0x56],
-            "shift+insert": [0x10, 0x2D]}[shortcut]
-    events = []
-    for key in keys:
-        events.append(INPUT(type=1, ki=KEYBDINPUT(wVk=key)))
-    for key in reversed(keys):
-        events.append(INPUT(type=1, ki=KEYBDINPUT(wVk=key, dwFlags=2)))
-    return (INPUT * len(events))(*events)
+    _fields_ = [("type", C.c_ulong), ("value", _INPUTUNION)]
 
 
 def hotkey_codes(value: str) -> tuple[int, int]:
-    mods, key = parse_hotkey(value)
-    flags = sum({"alt": 1, "ctrl": 2, "shift": 4, "super": 8}[m] for m in mods)
-    code = 0x6F + int(key[1:]) if key.startswith("f") and len(key) > 1 else ord(key.upper())
-    return flags | 0x4000, code  # MOD_NOREPEAT
+    parts = value.lower().replace("control", "ctrl").split("+")
+    key = parts[-1]
+    mods = {"alt": 0x1, "ctrl": 0x2, "shift": 0x4, "super": 0x8, "meta": 0x8}
+    flags = 0x4000  # MOD_NOREPEAT
+    for modifier in parts[:-1]:
+        if modifier not in mods:
+            raise AppError("HOTKEY", "Unsupported hotkey modifier")
+        flags |= mods[modifier]
+    if key.startswith("f") and key[1:].isdigit():
+        code = 0x70 + int(key[1:]) - 1
+    elif len(key) == 1 and key.isascii() and key.isalnum():
+        code = ord(key.upper())
+    else:
+        raise AppError("HOTKEY", "Unsupported hotkey key")
+    return flags, code
 
 
 class WinAPI:
     def __init__(self):
         self.user = C.WinDLL("user32", use_last_error=True)
         self.kernel = C.WinDLL("kernel32", use_last_error=True)
-        # Pointer-sized handles must never use ctypes' default c_int restype.
-        prototypes = {
+        proto = {
             "OpenClipboard": ([W.HWND], W.BOOL), "CloseClipboard": ([], W.BOOL),
             "EmptyClipboard": ([], W.BOOL), "SetClipboardData": ([W.UINT, W.HANDLE], W.HANDLE),
             "GetClipboardData": ([W.UINT], W.HANDLE),
@@ -69,20 +69,19 @@ class WinAPI:
             "GetAsyncKeyState": ([C.c_int], C.c_short),
             "RegisterHotKey": ([W.HWND, C.c_int, W.UINT, W.UINT], W.BOOL),
             "UnregisterHotKey": ([W.HWND, C.c_int], W.BOOL),
-            "GetMessageW": ([C.POINTER(W.MSG), W.HWND, W.UINT, W.UINT], W.BOOL),
+            "GetMessageW": ([C.POINTER(W.MSG), W.HWND, W.UINT, W.UINT], C.c_int),
             "PeekMessageW": ([C.POINTER(W.MSG), W.HWND, W.UINT, W.UINT, W.UINT], W.BOOL),
             "PostThreadMessageW": ([W.DWORD, W.UINT, W.WPARAM, W.LPARAM], W.BOOL),
+            "GetForegroundWindow": ([], W.HWND),
             "CreateWindowExW": ([W.DWORD, W.LPCWSTR, W.LPCWSTR, W.DWORD,
                                   C.c_int, C.c_int, C.c_int, C.c_int,
                                   W.HWND, W.HMENU, W.HINSTANCE, W.LPVOID], W.HWND),
             "DestroyWindow": ([W.HWND], W.BOOL),
-            "TranslateMessage": ([C.POINTER(W.MSG)], W.BOOL),
-            "DispatchMessageW": ([C.POINTER(W.MSG)], W.LPARAM),
         }
-        for name, (args, result) in prototypes.items():
-            fun = getattr(self.user, name)
-            fun.argtypes, fun.restype = args, result
-        for name, args, result in [
+        for name, (args, ret) in proto.items():
+            fn = getattr(self.user, name)
+            fn.argtypes, fn.restype = args, ret
+        for name, args, ret in [
             ("GlobalAlloc", [W.UINT, C.c_size_t], W.HGLOBAL),
             ("GlobalLock", [W.HGLOBAL], W.LPVOID),
             ("GlobalUnlock", [W.HGLOBAL], W.BOOL),
@@ -90,154 +89,148 @@ class WinAPI:
             ("GlobalSize", [W.HGLOBAL], C.c_size_t),
             ("GetCurrentThreadId", [], W.DWORD),
         ]:
-            fun = getattr(self.kernel, name)
-            fun.argtypes, fun.restype = args, result
+            fn = getattr(self.kernel, name)
+            fn.argtypes, fn.restype = args, ret
+
+
+def _keyboard_events(shortcut: str):
+    keys = {"ctrl+v": [0x11, 0x56], "ctrl+shift+v": [0x11, 0x10, 0x56],
+            "shift+insert": [0x10, 0x2D]}.get(shortcut.lower())
+    if not keys:
+        raise AppError("INVALID", "Unsupported paste shortcut")
+    items = [INPUT(type=1, ki=KEYBDINPUT(wVk=k)) for k in keys]
+    items += [INPUT(type=1, ki=KEYBDINPUT(wVk=k, dwFlags=KEYEVENTF_KEYUP)) for k in reversed(keys)]
+    return (INPUT * len(items))(*items)
 
 
 class WindowsDesktop:
-    def __init__(self, config: OutputConfig):
-        self.config = config
+    def __init__(self):
         self.api = WinAPI()
-        # A real hidden message-only window owns clipboard allocations. Opening
-        # with NULL and then EmptyClipboard leaves no owner for SetClipboardData.
-        self.hwnd = self.api.user.CreateWindowExW(0, "STATIC", "Dictation4me", 0,
-                                                  0, 0, 0, 0, W.HWND(-3), None, None, None)
-        if not self.hwnd:
-            raise DesktopError("Cannot create the Win32 clipboard owner window")
-        self.message_task = None
+        self.clipboard_lock = threading.RLock()
+        # Clipboard ownership is explicit; null owner plus EmptyClipboard can
+        # make SetClipboardData fail on Windows.
+        self.owner = self.api.user.CreateWindowExW(0, "STATIC", "Dictation4me", 0, 0, 0, 0, 0,
+                                                   W.HWND(-3), None, None, None)
+        if not self.owner:
+            raise AppError("DESKTOP", "Unable to create Windows clipboard owner")
 
-    async def _pump_messages(self) -> None:
-        msg = W.MSG()
-        while self.hwnd:
-            while self.api.user.PeekMessageW(C.byref(msg), self.hwnd, 0, 0, 1):
-                self.api.user.TranslateMessage(C.byref(msg))
-                self.api.user.DispatchMessageW(C.byref(msg))
-            await asyncio.sleep(0.02)
-
-    async def _open(self) -> None:
-        if self.message_task is None:
-            self.message_task = asyncio.create_task(self._pump_messages())
+    def _open(self) -> None:
         for _ in range(30):
-            if self.api.user.OpenClipboard(self.hwnd):
+            if self.api.user.OpenClipboard(self.owner):
                 return
-            await asyncio.sleep(0.02)
-        raise DesktopError("Clipboard is busy; try Copy last again")
+            time.sleep(.025)
+        raise AppError("CLIPBOARD", "Clipboard is busy")
 
-    async def copy(self, text: str) -> None:
+    def copy(self, text: str) -> None:
         raw = (text + "\0").encode("utf-16-le")
-        api = self.api
-        handle = api.kernel.GlobalAlloc(0x0002, len(raw))
-        if not handle:
-            raise DesktopError("Cannot allocate clipboard memory")
-        transferred = False
-        try:
-            pointer = api.kernel.GlobalLock(handle)
-            if not pointer:
-                raise DesktopError("Cannot lock clipboard memory")
+        with self.clipboard_lock:
+            handle = self.api.kernel.GlobalAlloc(GMEM_MOVEABLE, len(raw))
+            if not handle:
+                raise AppError("CLIPBOARD", "Unable to allocate clipboard memory")
+            transferred = False
             try:
-                C.memmove(pointer, raw, len(raw))
+                ptr = self.api.kernel.GlobalLock(handle)
+                if not ptr:
+                    raise AppError("CLIPBOARD", "Unable to lock clipboard memory")
+                try:
+                    C.memmove(ptr, raw, len(raw))
+                finally:
+                    self.api.kernel.GlobalUnlock(handle)
+                self._open()
+                try:
+                    if not self.api.user.EmptyClipboard() or not self.api.user.SetClipboardData(CF_UNICODETEXT, handle):
+                        raise AppError("CLIPBOARD", "Unable to set Unicode clipboard")
+                    transferred = True
+                finally:
+                    self.api.user.CloseClipboard()
             finally:
-                api.kernel.GlobalUnlock(handle)
-            await self._open()
+                if not transferred:
+                    self.api.kernel.GlobalFree(handle)
+
+    def read(self) -> str:
+        with self.clipboard_lock:
+            self._open()
             try:
-                if not api.user.EmptyClipboard() or not api.user.SetClipboardData(13, handle):
-                    raise DesktopError("Cannot set the Windows Unicode clipboard")
-                transferred = True
+                if not self.api.user.IsClipboardFormatAvailable(CF_UNICODETEXT):
+                    return ""
+                handle = self.api.user.GetClipboardData(CF_UNICODETEXT)
+                ptr = self.api.kernel.GlobalLock(handle) if handle else None
+                if not ptr:
+                    raise AppError("CLIPBOARD", "Unable to read Unicode clipboard")
+                try:
+                    size = self.api.kernel.GlobalSize(handle)
+                    if size > 2 * 1024 * 1024:
+                        raise AppError("CLIPBOARD", "Clipboard content is too large to verify")
+                    return C.string_at(ptr, size).decode("utf-16-le", errors="replace").split("\0", 1)[0]
+                finally:
+                    self.api.kernel.GlobalUnlock(handle)
             finally:
-                api.user.CloseClipboard()
-        finally:
-            if not transferred:
-                api.kernel.GlobalFree(handle)
+                self.api.user.CloseClipboard()
 
-    async def read_clipboard(self) -> str:
-        api = self.api
-        await self._open()
-        try:
-            if not api.user.IsClipboardFormatAvailable(13):
-                return ""
-            handle = api.user.GetClipboardData(13)
-            pointer = api.kernel.GlobalLock(handle) if handle else None
-            if not pointer:
-                raise DesktopError("Cannot read clipboard")
-            try:
-                size = api.kernel.GlobalSize(handle)
-                if size > 2 * 1024 * 1024:
-                    return ""  # unrelated huge clipboard, never paste it as our transcript
-                raw = C.string_at(pointer, size)
-                return raw.decode("utf-16-le", errors="replace").split("\0", 1)[0]
-            finally:
-                api.kernel.GlobalUnlock(handle)
-        finally:
-            api.user.CloseClipboard()
+    def foreground_token(self) -> str | None:
+        value = self.api.user.GetForegroundWindow()
+        return str(value) if value else None
 
-    async def prepare(self) -> None:
-        if self.config.backend in ("xdotool", "ydotool"):
-            raise DesktopError("Linux paste backend selected on Windows; choose auto")
-
-    async def paste(self, shortcut: str) -> None:
-        await self.prepare()
-        # Do not release physical keys the user is still holding.
-        for _ in range(100):
+    def paste(self, shortcut: str, *, expected_target: str | None = None) -> str:
+        if not expected_target or self.foreground_token() != expected_target:
+            return "blocked"
+        # Do not inject while a shortcut's modifier is still physically pressed.
+        for _ in range(80):
             if not any(self.api.user.GetAsyncKeyState(k) & 0x8000
                        for k in (0x10, 0x11, 0x12, 0x5B, 0x5C)):
                 break
-            await asyncio.sleep(0.02)
+            time.sleep(.025)
         else:
-            raise DesktopError("Modifier keys are still held; paste skipped")
-        events = keyboard_events(shortcut)
+            return "blocked"
+        events = _keyboard_events(shortcut)
         sent = self.api.user.SendInput(len(events), events, C.sizeof(INPUT))
         if sent != len(events):
-            # Best effort key-up for modifiers injected before a partial failure.
-            release = [event for event in events if event.ki.dwFlags & 2]
-            self.api.user.SendInput(len(release), (INPUT * len(release))(*release), C.sizeof(INPUT))
-            raise DesktopError("Windows rejected paste input (an elevated or secure target may block it)")
+            release = [event for event in events if event.ki.dwFlags & KEYEVENTF_KEYUP]
+            if release:
+                self.api.user.SendInput(len(release), (INPUT * len(release))(*release), C.sizeof(INPUT))
+            return "blocked"
+        return "sent"  # accepted text remains unobservable
 
-    async def close(self) -> None:
-        if self.message_task:
-            self.message_task.cancel()
-            try:
-                await self.message_task
-            except asyncio.CancelledError:
-                pass
-        if self.hwnd:
-            self.api.user.DestroyWindow(self.hwnd)
-            self.hwnd = None
+    def close(self) -> None:
+        if self.owner:
+            self.api.user.DestroyWindow(self.owner)
+            self.owner = None
 
 
 class WindowsHotkey:
     def __init__(self, value: str, callback):
         self.value, self.callback = value, callback
-        self.thread = None
-        self.thread_id = None
-        self.ready = threading.Event()
-        self.error = ""
         self.api = WinAPI()
+        self.ready = threading.Event()
+        self.thread = None
+        self.thread_id = 0
+        self.error = ""
 
-    def start(self) -> None:
-        self.thread = threading.Thread(target=self._run, daemon=True, name="dictation-hotkey")
+    def start(self):
+        self.thread = threading.Thread(target=self._run, name="dictation-global-hotkey", daemon=True)
         self.thread.start()
-        if not self.ready.wait(3) or self.error:
-            raise DesktopError(self.error or "Windows hotkey registration timed out")
+        if not self.ready.wait(4) or self.error:
+            raise AppError("HOTKEY", self.error or "Windows shortcut registration timed out")
 
-    def _run(self) -> None:
+    def _run(self):
         self.thread_id = self.api.kernel.GetCurrentThreadId()
         msg = W.MSG()
         self.api.user.PeekMessageW(C.byref(msg), None, 0, 0, 0)
         mods, code = hotkey_codes(self.value)
         if not self.api.user.RegisterHotKey(None, 1, mods, code):
-            self.error = "Global shortcut is already taken; choose another in Settings"
+            self.error = "Shortcut already assigned elsewhere; change it in Settings"
             self.ready.set()
             return
         self.ready.set()
         try:
             while self.api.user.GetMessageW(C.byref(msg), None, 0, 0) > 0:
-                if msg.message == 0x0312:
+                if msg.message == WM_HOTKEY:
                     self.callback()
         finally:
             self.api.user.UnregisterHotKey(None, 1)
 
-    def close(self) -> None:
+    def close(self):
         if self.thread_id:
-            self.api.user.PostThreadMessageW(self.thread_id, 0x0012, 0, 0)
+            self.api.user.PostThreadMessageW(self.thread_id, WM_QUIT, 0, 0)
         if self.thread:
-            self.thread.join(2)
+            self.thread.join(timeout=3)

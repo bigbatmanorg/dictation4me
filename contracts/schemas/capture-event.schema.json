@@ -1,0 +1,19 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://github.com/bigbatmanorg/dictation4me/spec/capture-event.schema.json",
+  "title":"Capture session transition event",
+  "type":"object","additionalProperties":false,
+  "required":["session_id","event_id","generation","state","occurred_at"],
+  "properties":{
+    "session_id":{"type":"string","minLength":1,"maxLength":80},
+    "event_id":{"type":"string","minLength":1,"maxLength":80},
+    "generation":{"type":"integer","minimum":0},
+    "state":{"enum":["IDLE","RECORDING","FINALIZING","TRANSCRIBING","TRANSFORMING","READY","DELIVERING","RECOVERABLE_RESULT","ERROR","CANCELLED"]},
+    "occurred_at":{"type":"string","format":"date-time"},
+    "error_code":{"type":["string","null"]},
+    "recording_id":{"type":["string","null"]},
+    "job_id":{"type":["string","null"]},
+    "copied":{"type":["boolean","null"]},
+    "paste_status":{"enum":["not_attempted","sent","blocked","unknown",null]}
+  }
+}

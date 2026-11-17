@@ -4,57 +4,48 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dictation4me"
-version = "0.1.0"
-description = "Batch dictation for Linux and Windows, using an OpenAI-compatible speech endpoint"
+version = "0.2.0"
+description = "Local-first NativeHTMLKit notes and cross-app AI dictation"
 readme = "README.md"
 requires-python = ">=3.12"
-license = {text = "MIT"}
-authors = [{name = "dictation4me contributors"}]
+license = "MIT"
+authors = [{name = "Dictation4me contributors"}]
 dependencies = [
-  "httpx>=0.27,<1",
-  "numpy>=1.26,<3",
-  "soxr>=0.5,<2",
-  "sounddevice>=0.5.1,<0.6",
-  "dbus-next>=0.2.3,<0.3; sys_platform == 'linux'",
-  "python-xlib>=0.33,<0.34; sys_platform == 'linux'",
-  "pystray>=0.19.5,<0.20; sys_platform == 'win32'",
-  "Pillow>=10,<13; sys_platform == 'win32'",
+    "httpx>=0.27,<1",
+    "platformdirs>=4.2,<5",
+    "nativehtmlkit>=0.1.2,<0.2",
+    "sounddevice>=0.5.1,<0.6",
+    "numpy>=1.26,<3",
+    "keyring>=25,<27",
+    "dbus-next>=0.2.3,<0.3; sys_platform == 'linux'",
+    "python-xlib>=0.33,<0.34; sys_platform == 'linux'",
 ]
 classifiers = [
-  "Development Status :: 3 - Alpha",
-  "Programming Language :: Python :: 3",
-  "Operating System :: POSIX :: Linux",
-  "Operating System :: Microsoft :: Windows",
-  "Topic :: Multimedia :: Sound/Audio :: Capture/Recording",
+ "Development Status :: 3 - Alpha", "Environment :: X11 Applications",
+ "Programming Language :: Python :: 3.12", "Programming Language :: Python :: 3.13",
+ "Operating System :: POSIX :: Linux", "Operating System :: Microsoft :: Windows",
 ]
-
 [project.scripts]
 dictation4me = "dictation4me.cli:main"
-
 [project.gui-scripts]
-dictation4me-gui = "dictation4me.cli:gui_main"
+dictation4me-gui = "dictation4me.gui:main"
 
 [dependency-groups]
-dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<2", "ruff>=0.9,<1"]
+dev = ["pytest>=8,<10", "pytest-cov>=6,<8", "ruff>=0.11,<1", "build>=1.2,<2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-dictation4me = ["assets/*.svg", "assets/*.ico"]
+dictation4me = ["assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-asyncio_mode = "auto"
-markers = ["desktop: requires a running graphical session", "dbus: requires dbus-next and a session bus"]
+markers = ["desktop: real desktop required", "network: explicitly configured provider required"]
 
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F"]
-
-[tool.ruff.lint.per-file-ignores]
-"src/dictation4me/desktop/linux_bus.py" = ["F722", "F821"]
+select = ["E4", "E7", "E9", "F", "I", "B"]

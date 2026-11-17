@@ -1,0 +1,18 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://github.com/bigbatmanorg/dictation4me/spec/export-manifest.schema.json",
+  "title":"Dictation4me portable export manifest",
+  "type":"object","additionalProperties":false,
+  "required":["format","version","created_at","notes","files"],
+  "properties":{
+    "format":{"const":"dictation4me-export"},
+    "version":{"const":1},
+    "created_at":{"type":"string","format":"date-time"},
+    "notes":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","title","path"],"properties":{
+      "id":{"type":"string","minLength":1},"title":{"type":"string"},"path":{"type":"string"},"folder":{"type":["string","null"]},"tags":{"type":"array","items":{"type":"string"}},"revision_id":{"type":["string","null"]}
+    }}},
+    "files":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["path","sha256","size"],"properties":{
+      "path":{"type":"string","minLength":1},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},"size":{"type":"integer","minimum":0},"content_type":{"type":"string"}
+    }}}
+  }
+}

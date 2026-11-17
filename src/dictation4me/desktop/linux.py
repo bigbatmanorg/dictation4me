@@ -1,196 +1,93 @@
-"""Linux clipboard ownership and non-destructive paste-shortcut injection."""
+"""Linux Wayland and X11 Unicode clipboard and explicit paste shortcut integration."""
 from __future__ import annotations
 
-import asyncio
 import os
-from pathlib import Path
 import shutil
 import socket
+import subprocess
+from pathlib import Path
 
-from .. import paths
-from ..config import OutputConfig
-
-
-class DesktopError(RuntimeError):
-    pass
-
-
-def session_type() -> str:
-    # A native Wayland session may also export DISPLAY for XWayland.
-    if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("XDG_SESSION_TYPE") == "wayland":
-        return "wayland"
-    if os.environ.get("DISPLAY"):
-        return "x11"
-    return "headless"
-
-
-async def run_command(args: list[str], *, data: bytes | None = None,
-                      timeout: float = 3, capture: bool = True) -> bytes:
-    try:
-        process = await asyncio.create_subprocess_exec(
-            *args, stdin=asyncio.subprocess.PIPE if data is not None else asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE if capture else asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL)
-    except OSError as exc:
-        raise DesktopError(f"Cannot start {Path(args[0]).name}; run dictation4me doctor") from exc
-    try:
-        out, _ = await asyncio.wait_for(process.communicate(data), timeout)
-        if process.returncode:
-            raise DesktopError(f"{Path(args[0]).name} failed; check your graphical session")
-        return out or b""
-    except (asyncio.CancelledError, TimeoutError):
-        if process.returncode is None:
-            process.kill()
-        await process.wait()
-        raise
-
-
-def socket_usable(path: str) -> bool:
-    if not path:
-        return False
-    for kind in (socket.SOCK_DGRAM, socket.SOCK_STREAM):
-        with socket.socket(socket.AF_UNIX, kind) as conn:
-            conn.settimeout(0.15)
-            try:
-                conn.connect(path)
-                return True
-            except (OSError, ValueError):
-                pass
-    return False
-
-
-def paste_args(backend: str, shortcut: str) -> list[str]:
-    keys = {
-        "ctrl+v": [29, 47],
-        "ctrl+shift+v": [29, 42, 47],
-        "shift+insert": [42, 110],
-    }
-    if shortcut not in keys:
-        raise DesktopError("Unsupported paste shortcut")
-    if backend == "xdotool":
-        return ["key", "--clearmodifiers", shortcut.replace("insert", "Insert")]
-    codes = keys[shortcut]
-    return ["key"] + [f"{k}:1" for k in codes] + [f"{k}:0" for k in reversed(codes)]
+from ..errors import AppError
+from . import session_type
 
 
 class LinuxDesktop:
-    def __init__(self, config: OutputConfig):
-        self.config = config
+    def __init__(self):
         self.session = session_type()
-        self.daemon: asyncio.subprocess.Process | None = None
-        self.socket = ""
-        self.prepare_lock = asyncio.Lock()
 
-    @property
-    def backend(self) -> str:
-        if self.config.backend == "clipboard":
-            return "clipboard"
-        if self.config.backend != "auto":
-            return self.config.backend
-        return "xdotool" if self.session == "x11" else "ydotool"
-
-    async def copy(self, text: str) -> None:
-        if self.session == "wayland":
-            # wl-copy owns the native Wayland clipboard. Never use an XWayland
-            # clipboard or a hidden Tk window to imitate a native data-control client.
-            args = ["wl-copy", "--type", "text/plain;charset=utf-8"]
-        elif self.session == "x11":
-            args = ["xclip", "-selection", "clipboard", "-in"]
-        else:
-            raise DesktopError("No graphical session: transcript cannot be copied")
-        # These commands deliberately fork a clipboard owner; never pipe stdout
-        # from the child owner, which would keep communicate() waiting indefinitely.
-        await run_command(args, data=text.encode("utf-8"), capture=False)
-        for _ in range(10):
-            if await self.read_clipboard() == text:
-                return
-            await asyncio.sleep(0.04)
-        raise DesktopError("Clipboard did not publish the transcript; it remains in app memory")
-
-    async def read_clipboard(self) -> str:
-        args = (["wl-paste", "--no-newline"] if self.session == "wayland"
-                else ["xclip", "-selection", "clipboard", "-out"])
-        return (await run_command(args)).decode("utf-8", errors="replace")
-
-    async def prepare(self) -> None:
-        async with self.prepare_lock:
-            await self._prepare()
-
-    async def _prepare(self) -> None:
-        if self.backend == "clipboard":
-            return
-        if self.backend == "xdotool":
-            if self.session != "x11":
-                raise DesktopError("xdotool cannot paste into native Wayland applications")
-            if not shutil.which("xdotool"):
-                raise DesktopError("xdotool is missing; run dictation4me setup-system")
-            return
-        if not shutil.which("ydotool"):
-            raise DesktopError("ydotool is missing; clipboard-only mode is still available")
-        base = os.environ.get("XDG_RUNTIME_DIR", "")
-        managed = str(paths.private_dir(paths.runtime_dir()) / "ydotool.sock")
-        candidates = [self.config.ydotool_socket, os.environ.get("YDOTOOL_SOCKET", ""),
-                      str(Path(base) / ".ydotool_socket") if base else "",
-                      managed, "/tmp/.ydotool_socket"]
-        for candidate in dict.fromkeys(candidates):
-            if socket_usable(candidate):
-                self.socket = candidate
-                return
-        if not self.config.ydotool_autostart:
-            raise DesktopError("No ydotoold socket; enable autostart or configure its socket")
-        binary = shutil.which("ydotoold")
-        if not binary:
-            binary = next((p for p in ("/usr/sbin/ydotoold", "/usr/libexec/ydotoold",
-                                      "/usr/local/bin/ydotoold") if os.access(p, os.X_OK)), None)
-        if not binary or not os.access("/dev/uinput", os.W_OK):
-            raise DesktopError("ydotoold or /dev/uinput permission is missing; run setup-system --enable-uinput")
-        if self.daemon is not None and self.daemon.returncode is None:
-            self.daemon.terminate()
-            await self.daemon.wait()
+    def _command(self, argv: list[str], *, data: bytes | None = None, timeout: float = 4) -> bytes:
+        if not shutil.which(argv[0]):
+            raise AppError("DESKTOP_DEPENDENCY", f"{argv[0]} is not installed")
         try:
-            Path(managed).unlink(missing_ok=True)
-            self.daemon = await asyncio.create_subprocess_exec(
-                binary, "--socket-path", managed, stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL)
-        except OSError as exc:
-            raise DesktopError("Could not start private ydotoold") from exc
-        for _ in range(60):
-            if self.daemon.returncode is not None:
-                break
-            if socket_usable(managed):
-                self.socket = managed
-                await asyncio.sleep(0.5)  # compositor discovers the virtual keyboard
-                return
-            await asyncio.sleep(0.05)
-        raise DesktopError("ydotoold did not become ready; check /dev/uinput permissions")
+            result = subprocess.run(argv, input=data, stdin=subprocess.DEVNULL if data is None else None,
+                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                    timeout=timeout, check=False)
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            raise AppError("DESKTOP", f"{argv[0]} failed in the graphical session") from exc
+        if result.returncode:
+            raise AppError("DESKTOP", f"{argv[0]} reported an error")
+        return result.stdout
 
-    async def paste(self, shortcut: str) -> None:
-        await self.prepare()
-        if self.backend == "clipboard":
-            raise DesktopError("Automatic paste is disabled")
-        args = [self.backend] + paste_args(self.backend, shortcut)
-        if self.backend == "ydotool":
-            # No shell, no transcript argument, no dynamically interpreted command.
-            env = dict(os.environ, YDOTOOL_SOCKET=self.socket)
-            process = await asyncio.create_subprocess_exec(
-                *args, env=env, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-            try:
-                await asyncio.wait_for(process.wait(), 3)
-            except (TimeoutError, asyncio.CancelledError):
-                if process.returncode is None:
-                    process.kill()
-                await process.wait()
-                raise
-            if process.returncode:
-                raise DesktopError("ydotool could not send paste; transcript stays in the clipboard")
+    def copy(self, text: str) -> None:
+        if self.session == "wayland":
+            self._command(["wl-copy", "--type", "text/plain;charset=utf-8"], data=text.encode("utf-8"))
+        elif self.session == "x11":
+            self._command(["xclip", "-selection", "clipboard", "-in"], data=text.encode("utf-8"))
         else:
-            await run_command(args)
+            raise AppError("DESKTOP", "Clipboard requires an interactive desktop session")
 
-    async def close(self) -> None:
-        if self.daemon is not None and self.daemon.returncode is None:
-            self.daemon.terminate()
-            try:
-                await asyncio.wait_for(self.daemon.wait(), 2)
-            except TimeoutError:
-                self.daemon.kill()
-                await self.daemon.wait()
+    def read(self) -> str:
+        if self.session == "wayland":
+            return self._command(["wl-paste", "--no-newline"]).decode("utf-8", errors="replace")
+        if self.session == "x11":
+            return self._command(["xclip", "-selection", "clipboard", "-out"]).decode("utf-8", errors="replace")
+        raise AppError("DESKTOP", "No clipboard available in this session")
+
+    @staticmethod
+    def _socket_ready(path: str) -> bool:
+        if not path:
+            return False
+        for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
+            with socket.socket(socket.AF_UNIX, kind) as s:
+                s.settimeout(0.2)
+                try:
+                    s.connect(path)
+                    return True
+                except (OSError, ValueError):
+                    pass
+        return False
+
+    def paste(self, shortcut: str, *, unsafe_wayland: bool = False) -> str:
+        """Return sent/blocked, never claim target accepted text."""
+        key = shortcut.lower()
+        valid = {"ctrl+v": [29, 47], "ctrl+shift+v": [29, 42, 47],
+                 "shift+insert": [42, 110]}
+        if key not in valid:
+            return "blocked"
+        if self.session == "x11":
+            self._command(["xdotool", "key", "--clearmodifiers", key])
+            return "sent"
+        if self.session != "wayland" or not unsafe_wayland:
+            return "blocked"
+        # Requires explicit user consent and a separately provisioned, accessible ydotoold.
+        # Never start a privileged helper or grant uinput permissions implicitly.
+        if not shutil.which("ydotool"):
+            return "blocked"
+        paths = [os.environ.get("YDOTOOL_SOCKET", ""),
+                 str(Path(os.environ.get("XDG_RUNTIME_DIR", "")) / ".ydotool_socket"),
+                 "/tmp/.ydotool_socket"]
+        sock = next((p for p in paths if self._socket_ready(p)), "")
+        if not sock:
+            return "blocked"
+        codes = valid[key]
+        env = dict(os.environ, YDOTOOL_SOCKET=sock)
+        command = ["ydotool", "key"] + [f"{k}:1" for k in codes] + [f"{k}:0" for k in reversed(codes)]
+        try:
+            result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                    timeout=4, env=env, check=False)
+            return "sent" if result.returncode == 0 else "blocked"
+        except (OSError, subprocess.TimeoutExpired):
+            return "blocked"
+
+    def foreground_token(self) -> str | None:
+        return None  # Wayland deliberately does not expose an original target identity.

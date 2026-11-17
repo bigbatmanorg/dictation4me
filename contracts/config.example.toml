@@ -1,0 +1,56 @@
+# No credential VALUES stored in this file. The product must never fall back to plaintext keys.
+[app]
+theme = "cobalt"
+density = "compact"
+autostart = false
+language = "auto"
+
+[audio]
+device = "default"
+max_seconds = 300
+max_spool_mb = 128
+sample_rate = 16000
+channels = 1
+retain_note_audio = true
+
+[stt]
+base_url = "http://127.0.0.1:4000/v1"
+path = "/audio/transcriptions"
+model = ""                    # required before STT test; use your actual server model alias
+request_profile = "minimal"  # minimal | openai-modern | legacy-language
+key_source = "none"          # none | keyring | environment
+key_reference = ""           # keyring ID or env VAR NAME, never its value
+timeout_seconds = 120
+max_file_mb = 25
+language_hint = "auto"
+
+[ai]
+base_url = "http://127.0.0.1:4000/v1"
+path = "/chat/completions"
+model = ""                    # required only for AI transforms
+key_source = "none"
+key_reference = ""
+timeout_seconds = 120
+max_source_chars = 80000
+max_output_chars = 120000
+automatic_quick_preset_id = ""
+
+[quick]
+shortcut = "Ctrl+Alt+D"       # preferred; desktop portal/user decides final binding
+manual_delivery = true
+auto_deliver = false
+paste_to_current_focus_unsafe_wayland = false
+output_mode = "clipboard"    # clipboard | attempt-paste
+paste_shortcut = "Ctrl+V"
+quick_text_retention_hours = 24
+record_audio_success_retention = "delete_after_transcription"
+
+[privacy]
+confirm_remote_provider = true
+send_diagnostics = false
+log_content = false
+
+[service]
+max_provider_jobs = 2
+max_ipc_message_bytes = 1048576
+request_poll_ms = 350

@@ -1,185 +1,215 @@
-"""Strict, small TOML configuration and endpoint normalization."""
+"""Strict, secret-free configuration; only supported keys are persisted."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field, fields
+import copy
+import ipaddress
 import json
-import os
-from pathlib import Path
 import re
+import socket
 import tomllib
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
-from . import paths
+from .errors import AppError
+from .paths import Paths, atomic_text
 
-
-class ConfigError(ValueError):
-    pass
-
-
-@dataclass
-class ServiceConfig:
-    base_url: str = "http://localhost:4000/v1"
-    model: str = "whisper-1"
-    language: str = "auto"
-    api_key_env: str = "LITELLM_API_KEY"
-    api_key: str = ""
-    timeout_seconds: int = 120
-    # Non-standard gateways can supply a path relative to the origin.
-    endpoint_path: str = ""
-
-    def key(self) -> str:
-        return (os.environ.get(self.api_key_env, "") if self.api_key_env else "") or self.api_key
-
-    def endpoint(self) -> str:
-        parsed = urlsplit(self.base_url.strip())
-        path = parsed.path.rstrip("/")
-        if self.endpoint_path:
-            path = self.endpoint_path
-        elif path.endswith("/audio/transcriptions"):
-            pass
-        elif path.endswith("/v1"):
-            path += "/audio/transcriptions"
-        else:
-            path += "/v1/audio/transcriptions"
-        return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+DEFAULTS = {
+    "app": {"theme": "cobalt", "density": "compact", "autostart": False, "language": "auto"},
+    "audio": {"device": "default", "max_seconds": 300, "max_spool_mb": 128,
+              "sample_rate": 16000, "channels": 1, "retain_note_audio": True},
+    "stt": {"base_url": "http://127.0.0.1:4000/v1", "path": "/audio/transcriptions",
+            "model": "", "request_profile": "minimal", "key_source": "none",
+            "key_reference": "", "timeout_seconds": 120, "max_file_mb": 25,
+            "language_hint": "auto"},
+    "ai": {"base_url": "http://127.0.0.1:4000/v1", "path": "/chat/completions",
+           "model": "", "key_source": "none", "key_reference": "", "timeout_seconds": 120,
+           "max_source_chars": 80000, "max_output_chars": 120000,
+           "automatic_quick_preset_id": ""},
+    "quick": {"shortcut": "Ctrl+Alt+D", "manual_delivery": True, "auto_deliver": False,
+              "paste_to_current_focus_unsafe_wayland": False, "output_mode": "clipboard",
+              "paste_shortcut": "Ctrl+V", "quick_text_retention_hours": 24,
+              "record_audio_success_retention": "delete_after_transcription"},
+    "privacy": {"confirm_remote_provider": True, "remote_provider_approved": False,
+                "send_diagnostics": False, "log_content": False},
+    "service": {"max_provider_jobs": 2, "max_ipc_message_bytes": 1048576, "request_poll_ms": 350},
+}
 
 
-@dataclass
-class AudioConfig:
-    device: str = "default"
-    max_seconds: int = 300
-    max_buffer_mb: int = 128
+LOCAL_SUFFIXES = (".local", ".lan", ".home", ".internal", ".localdomain", ".home.arpa")
 
 
-@dataclass
-class OutputConfig:
-    auto_paste: bool = True
-    paste_shortcut: str = "ctrl+v"
-    paste_delay_ms: int = 250
-    backend: str = "auto"  # auto, ydotool, xdotool, clipboard
-    ydotool_socket: str = ""
-    ydotool_autostart: bool = True
-
-
-@dataclass
-class DesktopConfig:
-    hotkey: str = "ctrl+alt+d"
-    hotkey_backend: str = "auto"  # auto, portal, x11, external, windows
-    autostart: bool = True
-
-
-@dataclass
-class Config:
-    service: ServiceConfig = field(default_factory=ServiceConfig)
-    audio: AudioConfig = field(default_factory=AudioConfig)
-    output: OutputConfig = field(default_factory=OutputConfig)
-    desktop: DesktopConfig = field(default_factory=DesktopConfig)
-
-    def validate(self) -> None:
-        # Explicit types prevent TOML strings or bool-as-int values from reaching system APIs.
-        defaults = Config()
-        for section in fields(self):
-            obj, default = getattr(self, section.name), getattr(defaults, section.name)
-            for item in fields(obj):
-                value, example = getattr(obj, item.name), getattr(default, item.name)
-                if type(value) is not type(example):
-                    raise ConfigError(f"{section.name}.{item.name}: expected {type(example).__name__}")
-                if isinstance(value, str) and any(c in value for c in ("\0", "\r", "\n")):
-                    raise ConfigError(f"{section.name}.{item.name}: control characters are not allowed")
-        try:
-            url = urlsplit(self.service.base_url)
-            port = url.port
-        except ValueError as exc:
-            raise ConfigError("Invalid endpoint URL") from exc
-        if url.scheme not in ("http", "https") or not url.hostname:
-            raise ConfigError("Base URL must be an absolute http:// or https:// URL")
-        if url.username or url.password or url.query or url.fragment:
-            raise ConfigError("Put the API key in its own field, not in URL credentials or a query")
-        if port is not None and not 0 < port <= 65535:
-            raise ConfigError("Invalid endpoint port")
-        if self.service.endpoint_path and (
-            not self.service.endpoint_path.startswith("/")
-            or self.service.endpoint_path.startswith("//")
-            or any(c in self.service.endpoint_path for c in "?#")
-        ):
-            raise ConfigError("endpoint_path must be an absolute path without a query or fragment")
-        if not self.service.model.strip():
-            raise ConfigError("An STT model alias is required")
-        if self.service.api_key_env and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", self.service.api_key_env):
-            raise ConfigError("Invalid API-key environment variable name")
-        if not 5 <= self.service.timeout_seconds <= 1200:
-            raise ConfigError("Request timeout must be between 5 and 1200 seconds")
-        if not 1 <= self.audio.max_seconds <= 900:
-            raise ConfigError("Recording duration must be between 1 and 900 seconds")
-        if not 8 <= self.audio.max_buffer_mb <= 512:
-            raise ConfigError("Audio buffer limit must be between 8 and 512 MiB")
-        if not 0 <= self.output.paste_delay_ms <= 5000:
-            raise ConfigError("Paste delay must be between 0 and 5000 milliseconds")
-        if self.output.paste_shortcut not in ("ctrl+v", "ctrl+shift+v", "shift+insert"):
-            raise ConfigError("Paste shortcut must be ctrl+v, ctrl+shift+v or shift+insert")
-        if self.output.backend not in ("auto", "ydotool", "xdotool", "clipboard"):
-            raise ConfigError("Unsupported paste backend")
-        if self.desktop.hotkey_backend not in ("auto", "portal", "x11", "external", "windows"):
-            raise ConfigError("Unsupported shortcut backend")
-        parse_hotkey(self.desktop.hotkey)
-
-
-def parse_hotkey(value: str) -> tuple[set[str], str]:
-    parts = value.lower().replace(" ", "").split("+")
-    aliases = {"control": "ctrl", "win": "super", "meta": "super"}
-    mods = [aliases.get(v, v) for v in parts[:-1]]
-    key = parts[-1]
-    valid_key = bool(re.fullmatch(r"[a-z0-9]|f(?:[1-9]|1[01])", key))
-    if not valid_key or not mods or any(m not in {"ctrl", "alt", "shift", "super"} for m in mods):
-        raise ConfigError("Use a shortcut such as ctrl+alt+d (letters, digits or F1–F11)")
-    if len(set(mods)) != len(mods):
-        raise ConfigError("Duplicate shortcut modifier")
-    return set(mods), key
-
-
-def from_dict(data: dict) -> Config:
-    cfg = Config()
-    allowed = {f.name for f in fields(cfg)}
-    if set(data) - allowed:
-        raise ConfigError("Unknown config section(s): " + ", ".join(sorted(set(data) - allowed)))
-    for section, values in data.items():
-        target = getattr(cfg, section)
-        if not isinstance(values, dict):
-            raise ConfigError(f"{section} must be a table")
-        known = {f.name for f in fields(target)}
-        if set(values) - known:
-            raise ConfigError(f"Unknown option in {section}: " + ", ".join(sorted(set(values) - known)))
-        for key, value in values.items():
-            setattr(target, key, value)
-    cfg.validate()
-    return cfg
-
-
-def load(path: Path | None = None, *, missing_ok: bool = False) -> Config:
-    path = path or paths.config_file()
-    if not path.exists():
-        if missing_ok:
-            return Config()
-        raise ConfigError("Not configured yet. Run: dictation4me init")
+def _private_ip(value: str) -> bool | None:
     try:
-        return from_dict(tomllib.loads(path.read_text(encoding="utf-8")))
-    except (tomllib.TOMLDecodeError, OSError) as exc:
-        # Do not include parser excerpts: a bad line may contain the secret.
-        raise ConfigError(f"Cannot read {path.name}; check its TOML syntax and permissions") from exc
+        ip = ipaddress.ip_address(value)
+    except ValueError:
+        return None
+    return ip.is_loopback or ip.is_private or ip.is_link_local
 
 
-def dumps(cfg: Config) -> str:
-    cfg.validate()
-    lines = ["# Dictation4me — contains credentials when api_key is set.", ""]
-    for section, values in asdict(cfg).items():
+def is_local_host(host: str) -> bool:
+    """Loopback, private/link-local IP, single-label LAN name, or a LAN DNS suffix.
+
+    A dotted DNS name that resolves only to private addresses is also local
+    (e.g. a split-horizon home DNS). This is a UX consent classifier, not an
+    SSRF security boundary.
+    """
+    host = (host or "").lower().rstrip(".")
+    if not host:
+        return False
+    literal = _private_ip(host)
+    if literal is not None:
+        return literal
+    if host in ("localhost", "host.docker.internal") or "." not in host:
+        return True
+    if host.endswith(LOCAL_SUFFIXES):
+        return True
+    try:
+        infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except (OSError, UnicodeError):
+        return False
+    addresses = {info[4][0].split("%", 1)[0] for info in infos}
+    return bool(addresses) and all(_private_ip(a) for a in addresses)
+
+
+def url_check(value: str) -> None:
+    parts = urlsplit(value)
+    if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password:
+        raise AppError("CONFIG", "Provider URL must be an HTTP(S) base URL without credentials")
+    if parts.query or parts.fragment or len(value) > 2048:
+        raise AppError("CONFIG", "Provider URL must not contain query parameters or fragments")
+    if parts.scheme == "http" and not is_local_host(parts.hostname):
+        raise AppError("CONFIG", "Plain HTTP is permitted only for a local/private endpoint; use HTTPS")
+
+
+def is_remote_provider(url: str) -> bool:
+    """Classify endpoint for consent; public DNS names and addresses are remote."""
+    return not is_local_host(urlsplit(url).hostname or "")
+
+
+MODIFIER_ALIASES = {"ctrl": "Ctrl", "control": "Ctrl", "alt": "Alt", "shift": "Shift",
+                    "meta": "Meta", "super": "Meta", "win": "Meta", "logo": "Meta"}
+MODIFIER_ORDER = ("Ctrl", "Alt", "Shift", "Meta")
+
+
+def normalize_shortcut(value: str) -> str:
+    """Canonical 'Ctrl+Alt+Shift+Meta+KEY'; Meta is the KDE name for Super/Windows."""
+    parts = [p.strip() for p in str(value).replace(" ", "").split("+")]
+    if len(parts) < 2 or not all(parts):
+        raise AppError("CONFIG", "Shortcut must be modifiers and one letter/digit/F1-F12, e.g. Ctrl+Alt+D")
+    mods = set()
+    for part in parts[:-1]:
+        canonical = MODIFIER_ALIASES.get(part.lower())
+        if not canonical or canonical in mods:
+            raise AppError("CONFIG", f"Unknown or repeated shortcut modifier: {part}")
+        mods.add(canonical)
+    key = parts[-1].upper()
+    if not re.fullmatch(r"[A-Z0-9]|F(?:[1-9]|1[0-2])", key):
+        raise AppError("CONFIG", "Shortcut key must be one letter, digit or F1-F12")
+    if mods == {"Shift"}:
+        raise AppError("CONFIG", "Shift alone is not a usable global shortcut modifier")
+    return "+".join([m for m in MODIFIER_ORDER if m in mods] + [key])
+
+
+def require_provider_consent(settings: dict, section: str) -> None:
+    provider = settings[section]
+    privacy = settings["privacy"]
+    if (privacy["confirm_remote_provider"] and not privacy["remote_provider_approved"]
+            and is_remote_provider(provider["base_url"])):
+        raise AppError("CONSENT", "Remote provider selected. In Settings, approve sending audio/text to remote endpoints first")
+
+
+def validate(config: dict) -> dict:
+    if not isinstance(config, dict):
+        raise AppError("CONFIG", "Configuration must be a table")
+    clean = copy.deepcopy(DEFAULTS)
+    for section, values in config.items():
+        if section not in DEFAULTS or not isinstance(values, dict):
+            raise AppError("CONFIG", f"Unknown configuration section: {section}")
+        for key, value in values.items():
+            if key not in DEFAULTS[section]:
+                raise AppError("CONFIG", f"Unsupported configuration setting: {section}.{key}")
+            default = DEFAULTS[section][key]
+            if type(value) is not type(default):
+                raise AppError("CONFIG", f"Wrong setting type: {section}.{key}")
+            clean[section][key] = value
+    for name in ("stt", "ai"):
+        cfg = clean[name]
+        url_check(cfg["base_url"])
+        if not re.fullmatch(r"/[a-zA-Z0-9_./-]{1,100}", cfg["path"]) or ".." in cfg["path"]:
+            raise AppError("CONFIG", f"Invalid {name} path")
+        if len(cfg["model"]) > 200 or len(cfg["key_reference"]) > 150:
+            raise AppError("CONFIG", "Model or credential reference is too long")
+        if cfg["key_source"] not in ("none", "keyring", "environment"):
+            raise AppError("CONFIG", f"Invalid {name} credential source")
+        if cfg["key_source"] == "environment" and not re.fullmatch(r"[A-Z_][A-Z0-9_]*", cfg["key_reference"]):
+            raise AppError("CONFIG", f"{name} environment source requires a variable name")
+        if cfg["key_source"] == "keyring" and not cfg["key_reference"]:
+            raise AppError("CONFIG", f"{name} keyring source requires a reference")
+        if not 1 <= cfg["timeout_seconds"] <= 600:
+            raise AppError("CONFIG", "Provider timeout must be 1 to 600 seconds")
+    if clean["stt"]["request_profile"] not in ("minimal", "openai-modern", "legacy-language"):
+        raise AppError("CONFIG", "Invalid STT request profile")
+    if not 1 <= clean["stt"]["max_file_mb"] <= 200:
+        raise AppError("CONFIG", "Invalid STT size limit")
+    if not 1 <= clean["audio"]["max_seconds"] <= 3600 or not 10 <= clean["audio"]["max_spool_mb"] <= 2048:
+        raise AppError("CONFIG", "Audio recording limits are out of range")
+    if clean["audio"]["sample_rate"] not in (16000, 24000, 44100, 48000) or clean["audio"]["channels"] not in (1, 2):
+        raise AppError("CONFIG", "Unsupported audio sample rate or channel count")
+    if clean["ai"]["max_source_chars"] < 10 or clean["ai"]["max_source_chars"] > 250000:
+        raise AppError("CONFIG", "AI source size limit is out of range")
+    if clean["ai"]["max_output_chars"] < 10 or clean["ai"]["max_output_chars"] > 500000:
+        raise AppError("CONFIG", "AI output size limit is out of range")
+    if clean["quick"]["output_mode"] not in ("clipboard", "attempt-paste"):
+        raise AppError("CONFIG", "Invalid output mode")
+    if clean["quick"]["paste_shortcut"].lower() not in ("ctrl+v", "ctrl+shift+v", "shift+insert"):
+        raise AppError("CONFIG", "Unsupported paste shortcut")
+    if clean["quick"]["record_audio_success_retention"] not in ("delete_after_transcription", "keep"):
+        raise AppError("CONFIG", "Invalid quick recording retention")
+    if clean["quick"]["quick_text_retention_hours"] not in (0, 24, 168, -1):
+        raise AppError("CONFIG", "Quick text retention must be 0, 24, 168 or -1 hours")
+    clean["quick"]["shortcut"] = normalize_shortcut(clean["quick"]["shortcut"])
+    if clean["service"]["max_provider_jobs"] not in (1, 2, 3, 4):
+        raise AppError("CONFIG", "Only 1-4 provider jobs are supported")
+    if not 65536 <= clean["service"]["max_ipc_message_bytes"] <= 1048576:
+        raise AppError("CONFIG", "IPC byte size must be 64 KiB to 1 MiB")
+    return clean
+
+
+def load(paths: Paths) -> dict:
+    if not paths.config_file.exists():
+        return copy.deepcopy(DEFAULTS)
+    try:
+        data = tomllib.loads(paths.config_file.read_text(encoding="utf-8"))
+        return validate(data)
+    except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+        raise AppError("CONFIG", "Cannot read/validate config.toml: " + str(exc)) from exc
+
+
+def dump_toml(data: dict) -> str:
+    lines = ["# Dictation4me configuration (never contains API key values).", ""]
+    for section, values in data.items():
         lines.append(f"[{section}]")
         for key, value in values.items():
-            lines.append(f"{key} = {json.dumps(value, ensure_ascii=False)}")
+            if isinstance(value, bool):
+                encoded = "true" if value else "false"
+            elif isinstance(value, str):
+                encoded = json.dumps(value, ensure_ascii=False)
+            else:
+                encoded = str(value)
+            lines.append(f"{key} = {encoded}")
         lines.append("")
     return "\n".join(lines)
 
 
-def save(cfg: Config, path: Path | None = None) -> None:
-    path = path or paths.config_file()
-    paths.private_dir(path.parent)
-    paths.atomic_write(path, dumps(cfg))
+def save(paths: Paths, config: dict) -> dict:
+    clean = validate(config)
+    atomic_text(paths.config_file, dump_toml(clean))
+    return clean
+
+
+def merge(paths: Paths, changes: dict) -> dict:
+    current = load(paths)
+    for section, values in changes.items():
+        if section not in current or not isinstance(values, dict):
+            raise AppError("CONFIG", "Invalid settings section")
+        current[section].update(values)
+    return save(paths, current)

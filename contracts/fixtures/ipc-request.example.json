@@ -1,0 +1,12 @@
+{
+  "id":"req-demo-001",
+  "version":1,
+  "command":"notes.save_draft",
+  "params":{
+    "note_id":"example-note-id",
+    "expected_edit_seq":4,
+    "content_md":"## Example note\nDurable draft update."
+  },
+  "auth":"0000000000000000000000000000000000000000000000000000000000000000",
+  "idempotency_key":"example-request-0001"
+}
