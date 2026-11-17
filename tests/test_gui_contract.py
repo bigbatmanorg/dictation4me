@@ -95,6 +95,10 @@ class FakeDocument:
         self._assert(ident)
         self.attributes.setdefault(ident, {}).pop(name, None)
 
+    def scroll_into_view(self, ident, **kwargs):
+        self._assert(ident)
+        self.scrolled = ident
+
     def hide_popover(self, ident):
         self._assert(ident)
         self.classes.setdefault(ident, set()).discard('popover-open')
@@ -270,9 +274,10 @@ def test_settings_dirty_tracking_and_tabs(ui_harness):
     ui.revert_settings()
     assert ui.doc.values['cfg-ai-model'] == ''
     assert 'hidden' in ui.doc.classes['settings-dirty']
-    ui._click({'element': 'settab-dictation'})
-    assert 'hidden' not in ui.doc.classes['set-dictation']
-    assert 'hidden' in ui.doc.classes['set-connections']
+    ui._click({'element': 'settab-behaviour'})
+    assert ui.doc.scrolled == 'set-behaviour'  # one page; the tree jumps to sections
+    assert 'active' in ui.doc.classes['settab-behaviour']
+    assert 'active' not in ui.doc.classes.get('settab-connections', set())
 
 
 def test_invalid_settings_show_inline_error(ui_harness):
@@ -337,3 +342,14 @@ def test_voice_note_live_panel(ui_harness, monkeypatch):
     assert ui.doc.texts["note-live-state"] == "Finishing…"
     ui._render_note_live(dict(status, state="IDLE", mode=None))
     assert "hidden" in ui.doc.classes["note-live"]
+
+
+def test_failed_paste_is_not_reported_as_pasted(ui_harness):
+    engine, ui, _, _ = ui_harness
+    ui.settings['quick'].update(auto_deliver=True, output_mode='attempt-paste')
+    base = dict(engine.status(), state='RECOVERABLE_RESULT')
+    ui._render_status(dict(base, delivery='blocked'))
+    assert ui.doc.texts['dict-state'] == 'Copied'
+    assert 'Ctrl+V' in ui.doc.texts['capture-detail']
+    ui._render_status(dict(base, delivery='sent'))
+    assert ui.doc.texts['dict-state'] == 'Pasted'

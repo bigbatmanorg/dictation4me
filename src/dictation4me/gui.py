@@ -26,7 +26,11 @@ def option(value: str, label: str) -> str:
 
 
 TABS = ("notes", "quick", "recovery", "settings")
-SETTING_TABS = ("connections", "dictation", "presets", "privacy")
+# Settings is one scrolling page; the tree jumps to sections (docs-style).
+SETTING_SECTIONS = {"connections": "set-connections", "stt": "set-stt", "ai": "set-ai",
+                    "dictation": "set-dictation", "shortcut": "set-shortcut",
+                    "behaviour": "set-behaviour", "microphone": "set-microphone",
+                    "presets": "set-presets", "privacy": "set-privacy"}
 SCOPES = ("active", "archive", "trash")
 BUSY = ("FINALIZING", "TRANSCRIBING", "TRANSFORMING", "DELIVERING")
 STATE_CLASSES = ("state-idle", "state-recording", "state-busy", "state-ready", "state-error",
@@ -46,7 +50,8 @@ PRESENTATION = {
                      "Working…", None),
     "TRANSFORMING": ("state-busy", "Rewriting…", "Applying your automatic AI rewrite.",
                      "Working…", None),
-    "DELIVERING": ("state-busy", "Copying…", "Copying the text to the clipboard.", "Working…", None),
+    "DELIVERING": ("state-busy", "Pasting…", "Copying and pasting. The first time, approve KDE's "
+                   "'Remote Control' dialog (it can open behind this window).", "Working…", None),
     "READY": ("state-ready", "Text ready", "Press {key} (or the button) to copy it, then paste.",
               "Copy to clipboard", "deliver"),
     "RECOVERABLE_RESULT": ("state-idle", "Copied", "Paste it with Ctrl+V. Press {key} to dictate again.",
@@ -236,6 +241,7 @@ class NotebookUI:
                 self.last_state = "OFFLINE"
                 self.doc.set_text("connection-status", "Background service not running")
                 self._set_state_classes("dictation-card", "state-offline")
+                self._set_state_classes("btn-dict-action", "state-offline")
                 self.doc.set_text("dict-state", "Service stopped")
                 self.doc.set_text("dict-hint", "Reopen Dictation4me or run “dictation4me service start”.")
                 self._enable("btn-dict-action", False)
@@ -245,6 +251,7 @@ class NotebookUI:
             self.last_hotkey = hotkey
             self.active_key = shortcut_from_status(hotkey) or self._current_shortcut()
             self.doc.set_text("dict-key", self.active_key)
+            self.doc.set_text("lead-key", self.active_key)
             self.doc.set_text("hotkey-keycap", shortcut_from_status(hotkey) or "Not active")
             self.doc.set_text("cfg-hotkey-status", self._describe_hotkey(hotkey))
             healthy = hotkey.startswith("registered") and "—" not in hotkey
@@ -259,9 +266,10 @@ class NotebookUI:
             if self.current_tab == "recovery":
                 self.refresh_recovery()
         state, error = status["state"], status.get("error") or ""
-        if state == self.last_state and error == self.last_error:
+        delivery = status.get("delivery")
+        if state == self.last_state and error == self.last_error and delivery == getattr(self, "last_delivery", None):
             return
-        self.last_state, self.last_error = state, error
+        self.last_state, self.last_error, self.last_delivery = state, error, delivery
         self.doc.set_text("connection-status", "Background service running")
         css, title, hint, label, action = PRESENTATION.get(state, PRESENTATION["ERROR"])
         flow = self._flow(self.settings["quick"]) if self.settings else "review"
@@ -271,14 +279,17 @@ class NotebookUI:
             hint = ("Speak now. Press {key} again to stop — the text is typed into the active app."
                     if flow == "paste" else "Speak now. Press {key} again to stop and copy the text.")
             label = "Stop & paste" if flow == "paste" else "Stop & copy"
-        elif state == "RECOVERABLE_RESULT" and flow == "paste":
+        elif state == "RECOVERABLE_RESULT" and flow == "paste" and delivery == "sent":
             title, hint = "Pasted", "The text was sent to the active app. Press {key} to dictate again."
+        elif state == "RECOVERABLE_RESULT" and flow == "paste":
+            title, hint = "Copied", ("Automatic paste didn't work — paste with Ctrl+V. "
+                                     "Settings › Dictation › Allow automatic pasting.")
         hint = hint.format(key=self.active_key)
         if error and state in ("IDLE", "ERROR"):
             hint = error
         elif error and state == "READY":
             hint += " (last copy failed: " + error + ")"
-        for ident in ("dictation-card", "quick-hero"):
+        for ident in ("dictation-card", "quick-hero", "btn-dict-action"):
             self._set_state_classes(ident, css)
         self.doc.set_text("dict-state", title)
         self.doc.set_text("dict-hint", hint)
@@ -505,8 +516,7 @@ class NotebookUI:
                 else:
                     self._safe(self.checkpoint)
             elif key == "k":
-                self._safe(self.show_tab, "notes")
-                self.doc.focus("search-input")
+                self._safe(self.focus_search)
 
     def _click(self, event):
         # Nested SVG/text inside a button reports its own id or none; follow the
@@ -536,6 +546,7 @@ class NotebookUI:
                 return handler(ident[len(prefix):])
         actions = {
             "btn-new": self.new_note, "btn-prev": lambda: self.turn_page(-1),
+            "btn-search-pill": self.focus_search,
             "btn-next": lambda: self.turn_page(1), "btn-folder-add": self.create_folder,
             "btn-scope-active": lambda: self.set_scope("active"),
             "btn-scope-archive": lambda: self.set_scope("archive"),
@@ -599,12 +610,20 @@ class NotebookUI:
             self.load_settings()
 
     def show_settings_tab(self, tab: str):
-        if tab not in SETTING_TABS:
+        target = SETTING_SECTIONS.get(tab)
+        if not target:
             return
         self.settings_tab = tab
-        for name in SETTING_TABS:
-            self._toggle("set-" + name, "hidden", name != tab)
+        for name in SETTING_SECTIONS:
             self._toggle("settab-" + name, "active", name == tab)
+        try:
+            self.doc.scroll_into_view(target, block="start")
+        except Exception:
+            pass  # scrolling is a convenience
+
+    def focus_search(self):
+        self.show_tab("notes")
+        self.doc.focus("search-input")
 
     def set_scope(self, scope: str):
         if scope not in SCOPES:
@@ -628,9 +647,9 @@ class NotebookUI:
             plain = self._plain(n["excerpt"] or "")
             excerpt = esc(plain) if plain else '<span class="muted">Empty note</span>'
             result.append(f'<button id="entry--{esc(n["id"])}" class="note-entry{active}" role="listitem">'
-                          f'<div class="entry-title">{pin}{esc(n["title"] or "Untitled")}</div>'
-                          f'<div class="entry-excerpt">{excerpt}</div>'
-                          f'<div class="entry-meta">{esc(self._when(n["updated_at"]))}</div></button>')
+                          f'<div class="entry-title">{pin}<span class="t">{esc(n["title"] or "Untitled")}</span>'
+                          f'<span class="when">{esc(self._short_when(n["updated_at"]))}</span></div>'
+                          f'<div class="entry-excerpt">{excerpt}</div></button>')
         if not result:
             empty = {"active": "No notes here yet. Press + to write one.",
                      "archive": "Nothing archived.", "trash": "Trash is empty."}[self.current_scope]
@@ -649,6 +668,18 @@ class NotebookUI:
         text = re.sub(r"(?m)^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)", "", markdown)
         text = re.sub(r"[*_`~]{1,3}|\[([^\]]*)\]\([^)]*\)", lambda m: m.group(1) or "", text)
         return re.sub(r"\s+", " ", text).strip()
+
+    @staticmethod
+    def _short_when(stamp: str) -> str:
+        """List date: time for today, '17 Nov' otherwise (local time)."""
+        from datetime import datetime
+        try:
+            moment = datetime.fromisoformat(stamp).astimezone()
+        except (TypeError, ValueError):
+            return ""
+        if moment.date() == datetime.now().astimezone().date():
+            return moment.strftime("%H:%M")
+        return f"{moment.day} {moment.strftime('%b')}"
 
     @staticmethod
     def _when(stamp: str) -> str:

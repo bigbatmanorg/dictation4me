@@ -175,9 +175,7 @@ class RemoteDesktopKeyboard:
                                                member=member, signature=signature, body=args + [options]))
                 if reply.message_type == MessageType.ERROR:
                     raise AppError("PASTE_UNAVAILABLE",
-                                   "The desktop refused keyboard access (" + str(reply.error_name) + "). "
-                                   "Fix: run 'dictation4me init' to install the desktop entry, then "
-                                   "'dictation4me service restart'")
+                                   "The desktop refused keyboard access (" + str(reply.error_name) + ")")
                 handle = reply.body[0]
                 try:
                     async with asyncio.timeout(timeout):
@@ -185,14 +183,12 @@ class RemoteDesktopKeyboard:
                             done.clear()
                             await done.wait()
                 except TimeoutError as exc:
-                    raise AppError("PASTE_TIMEOUT", "No answer to the keyboard access request — "
-                                                    "approve the KDE 'Remote Control' dialog") from exc
+                    raise AppError("PASTE_TIMEOUT", "No answer to the keyboard access request") from exc
             finally:
                 bus.remove_message_handler(receive)
             code, results = answer[handle]
             if code == 1:
-                raise AppError("PASTE_DENIED", "Keyboard access was declined. Fix: Settings › Dictation › "
-                                               "Allow automatic pasting, then press Approve")
+                raise AppError("PASTE_DENIED", "Keyboard access was declined")
             if code != 0:
                 raise AppError("PASTE_UNAVAILABLE", "The desktop could not start keyboard access")
             return results

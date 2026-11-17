@@ -56,6 +56,7 @@ class Engine:
         self._streams: dict[str, realtime.RealtimeStream] = {}
         self._live_stream: realtime.RealtimeStream | None = None
         self._live_window = None
+        self._last_delivery: str | None = None  # paste outcome of the last delivery
         self.live_window_enabled = not os.environ.get("DICTATION4ME_NO_TRAY")
         self._hotkey_state = "not registered"
         last = self.store.quick()
@@ -213,6 +214,7 @@ class Engine:
                     "quick_id": self._session.get("quick_id") if self._session else None,
                     "mode": self._session.get("mode") if self._session else None,
                     "hotkey": key_status,
+                    "delivery": self._last_delivery,
                     "session": desktop.session_type(),
                     "recovery_count": len(self.store.recordings(recoverable=True))}
 
@@ -238,6 +240,7 @@ class Engine:
                 raise AppError("RECOVERY_PENDING", "Resolve/cancel previous quick capture before starting another")
             session = self._new_session(mode, note_id)
             self._session = session
+            self._last_delivery = None
             stream = self._start_stream(session)
             try:
                 self._recording = self.recorder_type(self.paths, session["recording_id"], self.settings["audio"])
@@ -580,6 +583,7 @@ class Engine:
                 self.store.update_delivery(job_id, paste=status)
             self.store.mark_quick(item["id"], "delivered")
             with self._state_lock:
+                self._last_delivery = status  # "sent" only when the paste keys were sent
                 self._touch_state("RECOVERABLE_RESULT", notify=False)
             if status == "sent":
                 desktop.notify("Dictation pasted into the active app")
