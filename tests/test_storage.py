@@ -55,7 +55,6 @@ def test_tags_folders_archive_trash_and_purge(app_paths):
     assert db.list_notes(scope="trash")
     with pytest.raises(AppError):
         db.save_draft(n["id"], "bad", 0)
-    db.save_draft if False else None
     db.hard_delete(n["id"])
     assert db.integrity()["foreign_keys"] == 0
     assert db.integrity()["notes"] == 0

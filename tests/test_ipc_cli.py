@@ -14,7 +14,8 @@ def test_authenticated_ipc_and_unknown_action(app_paths):
     thread.start()
     try:
         end = time.monotonic()+2
-        while not app_paths.endpoint_file.exists() and time.monotonic()<end:time.sleep(.01)
+        while not app_paths.endpoint_file.exists() and time.monotonic() < end:
+            time.sleep(.01)
         assert invoke(app_paths, "hello", {"word": "žluťoučký"}) == {
             "action": "hello", "args": {"word": "žluťoučký"}}
         with pytest.raises(AppError) as exc:
@@ -39,7 +40,6 @@ def test_service_cli_end_to_end_process(app_paths):
     from dictation4me.ipc import invoke
     env = os.environ.copy()
     env["DICTATION4ME_HOME"] = str(app_paths.config.parent)
-    process = None
     try:
         status = ensure_service(app_paths, timeout=5)
         assert status["state"] in ("IDLE", "CANCELLED")

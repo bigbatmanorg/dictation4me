@@ -11,7 +11,7 @@ from dictation4me.storage import Notebook
 
 def test_backup_restore_and_integrity(app_paths, tmp_path):
     db = Notebook(app_paths)
-    note = db.create_note("Demo: žlutý", "# Hello\nSome real text 📝")
+    db.create_note("Demo: žlutý", "# Hello\nSome real text 📝")
     file = tmp_path / "backup.zip"
     result = backup(db, file)
     assert result["unencrypted"] is True
@@ -27,7 +27,7 @@ def test_backup_restore_and_integrity(app_paths, tmp_path):
 
 def test_markdown_export_no_secrets(app_paths, tmp_path):
     db = Notebook(app_paths)
-    note = db.create_note("Tech Design", "**Architectural** choice")
+    db.create_note("Tech Design", "**Architectural** choice")
     out = tmp_path / "markdown.zip"
     export_markdown(db, out)
     with zipfile.ZipFile(out) as z:

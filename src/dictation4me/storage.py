@@ -205,7 +205,7 @@ class Notebook:
     def set_note_fields(self, note_id: str, *, title=None, folder_id="__unchanged__", tags=None,
                         pinned=None, archived=None, trashed=None) -> dict:
         with self.transaction():
-            n = self._note(note_id)
+            self._note(note_id)  # raises NOT_FOUND for unknown notes
             parts, values = [], []
             if title is not None:
                 title = title.strip()[:500] or "Untitled"
@@ -296,7 +296,7 @@ class Notebook:
         with self.lock:
             if self._content(note_id)[1] != base_edit_seq:
                 raise Conflict()
-        r = self.save_draft(note_id, rev["content_md"], base_edit_seq)
+        self.save_draft(note_id, rev["content_md"], base_edit_seq)
         return self.checkpoint(note_id, kind="restore", force=True)
 
     def hard_delete(self, note_id: str) -> list[str]:
