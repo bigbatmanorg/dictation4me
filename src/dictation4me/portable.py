@@ -8,6 +8,7 @@ import re
 import shutil
 import tempfile
 import zipfile
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -186,7 +187,7 @@ def restore(archive: Path, destination: Path) -> dict:
         # Prevent installation of a corrupt/unsupported database.
         import sqlite3
         dbfile = root / "data/notes.sqlite3"
-        with sqlite3.connect(f"file:{dbfile}?mode=ro", uri=True) as db:
+        with closing(sqlite3.connect(f"file:{dbfile}?mode=ro", uri=True)) as db:
             if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise AppError("INVALID_BACKUP", "Backup SQLite integrity check failed")
         # TemporaryDirectory cleans only its original name; atomically renamed folder persists.

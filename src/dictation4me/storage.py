@@ -6,6 +6,7 @@ import hashlib
 import sqlite3
 import threading
 import uuid
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from importlib.resources import files
 from pathlib import Path
@@ -655,5 +656,7 @@ class Notebook:
     def backup_db(self, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         with self.lock:
-            with sqlite3.connect(destination) as target:
+            # closing(): sqlite3's own context manager only commits; an open
+            # handle keeps the file locked on Windows (temp cleanup fails).
+            with closing(sqlite3.connect(destination)) as target:
                 self.db.backup(target)

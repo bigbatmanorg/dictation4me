@@ -7,6 +7,7 @@ import platform
 import shutil
 import sqlite3
 import sys
+from contextlib import closing
 
 from . import __version__
 from .config import load
@@ -48,7 +49,7 @@ def doctor(paths: Paths) -> dict:
         info["keyring_available"] = bool(keyring.get_keyring().priority > 0)
     except Exception:
         info["issues"].append("Keyring unavailable; use environment credentials if needed")
-    with sqlite3.connect(":memory:") as db:
+    with closing(sqlite3.connect(":memory:")) as db:
         try:
             db.execute("CREATE VIRTUAL TABLE test_fts USING fts5(value)")
             info["sqlite_fts5"] = True
