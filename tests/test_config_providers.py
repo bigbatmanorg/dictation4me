@@ -57,10 +57,11 @@ def test_stt_reject_invalid_and_oversize(tmp_path):
     audio.write_bytes(bytes(12))
     cfg = config.validate({"stt": {"model": "speech-test"}})["stt"]
     for response in ({"foo": "bar"}, {"text": ""}, [1, 2]):
-        def mock(_):return httpx.Response(200, json=response)
+        def mock(_, response=response):
+            return httpx.Response(200, json=response)
         with pytest.raises(AppError) as err:
             transcribe(audio, cfg, transport=httpx.MockTransport(mock))
-        assert err.value.code == "PROVIDER_OUTPUT" or err.value.code == "PROVIDER_UNAVAILABLE"
+        assert err.value.code in ("PROVIDER_OUTPUT", "PROVIDER_UNAVAILABLE", "NO_SPEECH")
 
 
 def test_ai_messages_and_truncated_result():
@@ -93,7 +94,7 @@ def test_presets_seed_crud(app_paths):
     from dictation4me.presets import Presets
     p = Presets(app_paths)
     assert len(p.list()) == 8
-    item = p.save({"id": "my-prompt", "name": "My prompt", "instruction": "Rewrite clearly"})
+    p.save({"id": "my-prompt", "name": "My prompt", "instruction": "Rewrite clearly"})
     assert p.get("my-prompt")["name"] == "My prompt"
     p.delete("my-prompt")
     with pytest.raises(AppError):

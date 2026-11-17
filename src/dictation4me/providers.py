@@ -71,7 +71,9 @@ def transcribe(audio_file: Path, cfg: dict, *, transport: httpx.BaseTransport | 
         result = _post(cfg, files_data={"file": (audio_file.name, stream, "audio/wav")},
                        form_data=form, transport=transport)
     text = result.get("text")
-    if not isinstance(text, str) or not text.strip() or len(text) > 500000:
+    if isinstance(text, str) and not text.strip():
+        raise AppError("NO_SPEECH", "No speech was detected in the recording")
+    if not isinstance(text, str) or len(text) > 500000:
         raise AppError("PROVIDER_OUTPUT", "STT response has no valid text field")
     return {"text": text.strip(), "language": result.get("language") if isinstance(result.get("language"), str) else None}
 

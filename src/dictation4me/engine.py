@@ -283,7 +283,14 @@ class Engine:
                 if self._is_live(session, job_id):
                     self.store.job_status(job_id, "failed", exc.code)
                     self.store.set_recording_error(session["recording_id"], exc.code)
-                    self._touch_state("ERROR", message=str(exc))
+                    if exc.code == "NO_SPEECH":
+                        # Silence is not a provider failure: keep the audio in
+                        # Recovery but do not block the next shortcut press.
+                        self._touch_state("IDLE", message=str(exc))
+                        desktop.notify("No speech detected — nothing to deliver. "
+                                       "The audio is kept in Recovery.")
+                    else:
+                        self._touch_state("ERROR", message=str(exc))
                 else:
                     self.store.job_status(job_id, "cancelled")
         except Exception:
@@ -637,6 +644,40 @@ class Engine:
         return {"settings": self.settings, "restart_required": False,
                 "shortcut_changed": changed, "hotkey": self.status()["hotkey"]}
 
+    def credential_status(self) -> dict:
+        """Whether each provider's key is usable by *this* service; never the value."""
+        out = {}
+        for section in ("stt", "ai"):
+            cfg = self.settings[section]
+            entry = {"source": cfg["key_source"], "reference": cfg["key_reference"],
+                     "available": True, "detail": "No key is sent"}
+            if cfg["key_source"] != "none":
+                try:
+                    credentials.resolve(cfg)
+                    entry["detail"] = ("Found in the service environment"
+                                       if cfg["key_source"] == "environment"
+                                       else "Stored in the OS keyring")
+                except AppError as exc:
+                    entry["available"], entry["detail"] = False, str(exc)
+            entry["can_import"] = (cfg["key_source"] == "environment" and entry["available"])
+            out[section] = entry
+        return out
+
+    def import_env_credential(self, section: str) -> dict:
+        """Explicit user action: copy an environment key into the OS keyring so a
+        service started at login (without shell profile variables) can use it."""
+        if section not in ("stt", "ai"):
+            raise AppError("INVALID", "Unknown provider")
+        cfg = self.settings[section]
+        if cfg["key_source"] != "environment":
+            raise AppError("INVALID", "This provider does not use an environment variable")
+        value = credentials.resolve(cfg)
+        reference = f"{section}.default"
+        credentials.store_secret(reference, value)
+        self.settings = config.merge(self.paths, {section: {"key_source": "keyring",
+                                                             "key_reference": reference}})
+        return {"settings": self.settings, "credentials": self.credential_status()}
+
     def handle(self, action: str, args: dict) -> dict | list | str | None:
         """Small fixed RPC vocabulary. No arbitrary Python/shell execution."""
         if action == "status":
@@ -645,6 +686,10 @@ class Engine:
             return self.settings
         if action == "config.save":
             return self.save_settings(args.get("changes", {}), args.get("secrets"))
+        if action == "credentials.status":
+            return self.credential_status()
+        if action == "credentials.import-env":
+            return self.import_env_credential(args.get("provider", ""))
         if action == "notes.list":
             return self.store.list_notes(search=args.get("search", ""), scope=args.get("scope", "active"),
                                          folder_id=args.get("folder_id"), limit=args.get("limit", 50),

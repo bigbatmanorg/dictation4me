@@ -115,7 +115,7 @@ def test_repeated_delivery_rejected_but_explicit_retry_allowed(make_engine):
     engine.start_capture("quick")
     engine.stop_capture()
     ready(engine)
-    result = engine.deliver_quick()
+    engine.deliver_quick()
     with pytest.raises(AppError) as exc:
         engine.deliver_quick()
     assert exc.value.code == "DELIVERED"
@@ -214,7 +214,8 @@ def test_ai_job_result_and_manual_edit_conflict(make_engine):
     end = time.monotonic()+3
     while time.monotonic()<end:
         job = engine.get_job_result(req["job_id"])
-        if job["job"]["status"]=="succeeded":break
+        if job["job"]["status"] == "succeeded":
+            break
         time.sleep(.02)
     assert job["proposal"]["proposed_content_md"] == "AI generated text"
     engine.store.save_draft(note["id"], "Updated locally", 0)
@@ -317,7 +318,8 @@ def test_remote_provider_explicit_approval(make_engine):
     end = time.monotonic()+2
     while time.monotonic()<end:
         result = engine.get_job_result(submitted['job_id'])
-        if result['job']['status'] == 'succeeded':break
+        if result['job']['status'] == 'succeeded':
+            break
         time.sleep(.01)
     assert result['job']['status'] == 'succeeded'
 
@@ -371,3 +373,51 @@ def test_hotkey_status_explains_desktop_owned_binding(make_engine, monkeypatch):
     assert status.startswith("registered: Meta+L") and "System Settings" in status
     engine.settings["quick"]["shortcut"] = "Meta+L"
     assert engine.status()["hotkey"] == "registered: Meta+L"
+
+
+def test_silent_recording_does_not_block_next_press(make_engine):
+    from dictation4me.errors import AppError as Err
+
+    def silent(path, cfg):
+        raise Err("NO_SPEECH", "No speech was detected in the recording")
+
+    engine, _ = make_engine(stt=silent)
+    assert press(engine)["state"] == "RECORDING"
+    assert press(engine)["state"] == "TRANSCRIBING"
+    ready(engine, "IDLE")
+    assert "No speech" in engine.status()["error"]
+    recovery = engine.store.recordings(recoverable=True)
+    assert recovery and recovery[0]["error_code"] == "NO_SPEECH"  # audio retained
+    assert press(engine)["state"] == "RECORDING"  # next press just records again
+
+
+def test_provider_failure_still_requires_explicit_recovery(make_engine):
+    from dictation4me.errors import AppError as Err
+
+    def down(path, cfg):
+        raise Err("PROVIDER_HTTP", "Provider returned HTTP 500")
+
+    engine, _ = make_engine(stt=down)
+    press(engine)
+    press(engine)
+    ready(engine, "ERROR")
+    assert press(engine)["ignored"] == "recovery_pending"
+
+
+def test_credential_status_and_explicit_keyring_import(make_engine, monkeypatch):
+    import dictation4me.credentials as creds
+    store = {}
+    monkeypatch.setattr(creds, "store_secret", lambda name, value: store.__setitem__(name, value))
+    engine, _ = make_engine()
+    engine.save_settings({"ai": {"key_source": "environment", "key_reference": "D4M_TEST_KEY"}})
+    monkeypatch.delenv("D4M_TEST_KEY", raising=False)
+    status = engine.credential_status()["ai"]
+    assert not status["available"] and not status["can_import"]
+    monkeypatch.setenv("D4M_TEST_KEY", "value-123")
+    status = engine.handle("credentials.status", {})
+    assert status["ai"]["available"] and status["ai"]["can_import"]
+    assert "value-123" not in str(status)
+    result = engine.handle("credentials.import-env", {"provider": "ai"})
+    assert store == {"ai.default": "value-123"}
+    assert result["settings"]["ai"]["key_source"] == "keyring"
+    assert "value-123" not in str(result)
