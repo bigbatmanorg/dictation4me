@@ -134,3 +134,40 @@ def test_missing_portaudio_is_clean_error(app_paths, monkeypatch):
     with pytest.raises(AppError) as info:
         AudioRecorder(app_paths, "r1", config.DEFAULTS["audio"]).start()
     assert info.value.code == "AUDIO_UNAVAILABLE"
+
+
+def test_wayland_paste_prefers_portal_and_reports_failure(monkeypatch, tmp_path):
+    from dictation4me.desktop import linux
+
+    sent = []
+
+    class Keyboard:
+        def send_keys(self, codes):
+            sent.append(codes)
+
+    backend = linux.LinuxDesktop()
+    backend.session = "wayland"
+    monkeypatch.setattr(linux.time, "sleep", lambda _: None)
+    monkeypatch.setattr(backend, "keyboard", lambda: Keyboard())
+    assert backend.paste("Ctrl+V") == "sent"
+    assert sent == [[29, 47]]
+
+    class Denied:
+        def send_keys(self, codes):
+            raise AppError("PASTE_DENIED", "Keyboard access for automatic pasting was declined")
+
+    monkeypatch.setattr(backend, "keyboard", lambda: Denied())
+    assert backend.paste("Ctrl+Shift+V") == "blocked"  # no ydotool fallback without opt-in
+    assert "declined" in backend.last_paste_error
+
+
+def test_remote_desktop_token_is_private(tmp_path):
+    from dictation4me.desktop.remote_desktop import RemoteDesktopKeyboard
+    keyboard = RemoteDesktopKeyboard(tmp_path / "state" / "remote-desktop.token")
+    assert not keyboard.authorized
+    keyboard._save_token("tok-1")
+    assert keyboard.authorized
+    if sys.platform != "win32":
+        assert (keyboard.token_path.stat().st_mode & 0o777) == 0o600
+    keyboard.forget()
+    assert not keyboard.authorized

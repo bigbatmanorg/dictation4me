@@ -287,13 +287,21 @@
             <p class="hint">“System default” follows your desktop sound settings.</p>
           </div>
           <div class="card">
-            <div class="card-head"><h3>After transcription</h3></div>
-            <label for="cfg-output">When you press the shortcut on a finished result</label>
-            <select id="cfg-output"><option value="clipboard">Copy to clipboard (you paste)</option><option value="attempt-paste">Copy and try to paste</option></select>
+            <div class="card-head"><h3>Shortcut behaviour</h3></div>
+            <label for="cfg-flow">When you press the shortcut the second time</label>
+            <select id="cfg-flow">
+              <option value="paste">Stop, then type the text into the active app (2 presses)</option>
+              <option value="copy">Stop, then copy the text to the clipboard (2 presses)</option>
+              <option value="review">Stop; press a third time to copy (review first)</option>
+            </select>
+            <div id="paste-setup" class="paste-setup">
+              <span id="paste-status" class="status-line">Checking keyboard access…</span>
+              <button id="btn-paste-setup" class="small">Allow automatic pasting…</button>
+            </div>
             <label for="cfg-paste-shortcut">Paste keys to send</label>
-            <select id="cfg-paste-shortcut"><option value="Ctrl+V">Ctrl+V</option><option value="Ctrl+Shift+V">Ctrl+Shift+V (terminals)</option><option value="Shift+Insert">Shift+Insert</option></select>
-            <label class="check"><input id="cfg-auto-deliver" type="checkbox"><span>Copy automatically as soon as the text is ready</span></label>
-            <label class="check"><input id="cfg-unsafe-wayland" type="checkbox"><span>On Wayland, paste into whatever is focused <span class="muted">(needs a separately set-up ydotoold; may paste into the wrong window)</span></span></label>
+            <select id="cfg-paste-shortcut"><option value="Ctrl+V">Ctrl+V (most apps)</option><option value="Ctrl+Shift+V">Ctrl+Shift+V (terminals)</option><option value="Shift+Insert">Shift+Insert</option></select>
+            <label class="check"><input id="cfg-unsafe-wayland" type="checkbox"><span>Fallback: use ydotool when the desktop portal is unavailable <span class="muted">(needs a separately set-up ydotoold)</span></span></label>
+            <p class="hint">The text always goes to the clipboard first. Pasting goes to whatever window has focus when transcription finishes.</p>
           </div>
           <div class="card">
             <div class="card-head"><h3>Automatic rewrite</h3></div>

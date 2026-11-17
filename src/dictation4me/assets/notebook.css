@@ -355,3 +355,4 @@ dialog p { margin-top: 8px; color: var(--text-2); }
   .crumb { display: none; }
   .editor-bar { justify-content: flex-end; padding-left: 16px; }
 }
+.paste-setup { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 9px 11px; border-radius: 9px; background: var(--surface-2); }

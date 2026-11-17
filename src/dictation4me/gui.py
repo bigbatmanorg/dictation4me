@@ -253,6 +253,13 @@ class NotebookUI:
         self.last_state, self.last_error = state, error
         self.doc.set_text("connection-status", "Background service running")
         css, title, hint, label, action = PRESENTATION.get(state, PRESENTATION["ERROR"])
+        flow = self._flow(self.settings["quick"]) if self.settings else "review"
+        if state == "RECORDING" and flow != "review":
+            hint = ("Speak now. Press {key} again to stop — the text is typed into the active app."
+                    if flow == "paste" else "Speak now. Press {key} again to stop and copy the text.")
+            label = "Stop & paste" if flow == "paste" else "Stop & copy"
+        elif state == "RECOVERABLE_RESULT" and flow == "paste":
+            title, hint = "Pasted", "The text was sent to the active app. Press {key} to dictate again."
         hint = hint.format(key=self.active_key)
         if error and state in ("IDLE", "ERROR"):
             hint = error
@@ -507,6 +514,7 @@ class NotebookUI:
             "btn-refresh-recovery": self.refresh_recovery,
             "btn-save-settings": self.save_settings, "btn-revert-settings": self.revert_settings,
             "btn-test-ai": self.test_ai, "btn-test-stt": self.test_stt,
+            "btn-paste-setup": self.setup_paste,
             "btn-import-stt": lambda: self.import_key("stt"),
             "btn-import-ai": lambda: self.import_key("ai"),
             "btn-preset-new": self.new_preset, "btn-preset-save": self.save_preset,
@@ -1027,11 +1035,10 @@ class NotebookUI:
             self.doc.set_value(f"cfg-{prefix}-secret", "")
         self.doc.set_value("cfg-stt-profile", self.settings["stt"]["request_profile"])
         self.doc.set_value("cfg-shortcut", self.settings["quick"]["shortcut"])
-        self.doc.set_value("cfg-output", self.settings["quick"]["output_mode"])
+        self.doc.set_value("cfg-flow", self._flow(self.settings["quick"]))
         self.doc.set_value("cfg-paste-shortcut", self.settings["quick"]["paste_shortcut"])
         self.doc.set_value("cfg-auto-preset", self.settings["ai"]["automatic_quick_preset_id"])
         self.doc.set_value("cfg-retention", str(self.settings["quick"]["quick_text_retention_hours"]))
-        self.doc.set_checked("cfg-auto-deliver", self.settings["quick"]["auto_deliver"])
         self.doc.set_checked("cfg-unsafe-wayland", self.settings["quick"]["paste_to_current_focus_unsafe_wayland"])
         self.doc.set_checked("cfg-retain-quick-audio", self.settings["quick"]["record_audio_success_retention"] == "keep")
         self.doc.set_checked("cfg-remote-approved", self.settings["privacy"]["remote_provider_approved"])
@@ -1043,6 +1050,7 @@ class NotebookUI:
             option(str(d["id"]), d["name"]) for d in devices if d["name"] != "default"))
         self.doc.set_value("cfg-audio-device", str(self.settings["audio"]["device"]))
         self.refresh_credentials()
+        self.refresh_paste_status()
         self.render_about()
         self._clear_settings_dirty()
 
@@ -1066,6 +1074,58 @@ class NotebookUI:
             self._toggle(f"cred-{section}-status", "ok", ok)
             self._toggle(f"cred-{section}-status", "bad", not ok)
             self._toggle(f"btn-import-{section}", "hidden", not info["can_import"])
+
+    @staticmethod
+    def _flow(quick: dict) -> str:
+        if not quick["auto_deliver"]:
+            return "review"
+        return "paste" if quick["output_mode"] == "attempt-paste" else "copy"
+
+    @staticmethod
+    def _flow_settings(flow: str) -> dict:
+        return {"paste": {"auto_deliver": True, "output_mode": "attempt-paste"},
+                "copy": {"auto_deliver": True, "output_mode": "clipboard"}}.get(
+                    flow, {"auto_deliver": False, "output_mode": "clipboard"})
+
+    def refresh_paste_status(self):
+        pasting = self.settings["quick"]["output_mode"] == "attempt-paste"
+        self._toggle("paste-setup", "hidden", not pasting)
+        if not pasting:
+            return
+        try:
+            info = self.call("paste.status")
+        except AppError:
+            return
+        if not info["needs_permission"]:
+            text, ok = "Pasting works without extra permission on this desktop.", True
+        elif info["authorized"]:
+            text, ok = "Keyboard access allowed — dictation is pasted automatically.", True
+        else:
+            text, ok = ("Not allowed yet. Click the button once and approve the KDE dialog, "
+                        "so it never interrupts a dictation."), False
+        if info.get("last_error") and not ok:
+            text += " Last attempt: " + info["last_error"]
+        self.doc.set_text("paste-status", text)
+        self._toggle("paste-status", "ok", ok)
+        self._toggle("paste-status", "bad", not ok)
+        self._toggle("btn-paste-setup", "hidden", ok)
+
+    def setup_paste(self):
+        self.doc.set_text("paste-status", "Waiting for you to approve the KDE dialog…")
+
+        def work():
+            try:
+                self.call("paste.setup", _timeout=150)
+                if not self.stop_event.is_set():
+                    with self.lock:
+                        self.refresh_paste_status()
+                        self.settings_feedback("Automatic pasting is allowed")
+            except AppError as exc:
+                if not self.stop_event.is_set():
+                    self.settings_feedback(f"Keyboard access not granted: {exc}", is_error=True)
+                    with self.lock:
+                        self.refresh_paste_status()
+        threading.Thread(target=work, name="dictation-paste-setup", daemon=True).start()
 
     def render_about(self):
         status = self._status_or_none() or {}
@@ -1099,10 +1159,9 @@ class NotebookUI:
             "record_audio_success_retention": ("keep" if self.doc.get_checked("cfg-retain-quick-audio")
                                                 else "delete_after_transcription"),
             "shortcut": self.doc.get_value("cfg-shortcut").strip(),
-            "output_mode": self.doc.get_value("cfg-output"),
+            **self._flow_settings(self.doc.get_value("cfg-flow")),
             "paste_shortcut": self.doc.get_value("cfg-paste-shortcut"),
             "quick_text_retention_hours": int(self.doc.get_value("cfg-retention") or 24),
-            "auto_deliver": bool(self.doc.get_checked("cfg-auto-deliver")),
             "paste_to_current_focus_unsafe_wayland": bool(self.doc.get_checked("cfg-unsafe-wayland"))}
         try:
             result = self.call("config.save", changes=changes, secrets=secrets)
@@ -1115,7 +1174,7 @@ class NotebookUI:
         message = "Settings saved"
         if result.get("shortcut_changed"):
             message += " — shortcut updated"
-        self.last_hotkey = None  # re-render shortcut status on next poll
+        self.last_hotkey = None  # re-render shortcut status and state hints on next poll
         self.settings_feedback(message + time.strftime(" at %H:%M"))
         self.notice(message)
 

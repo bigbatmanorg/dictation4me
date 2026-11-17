@@ -421,3 +421,25 @@ def test_credential_status_and_explicit_keyring_import(make_engine, monkeypatch)
     assert store == {"ai.default": "value-123"}
     assert result["settings"]["ai"]["key_source"] == "keyring"
     assert "value-123" not in str(result)
+
+
+def test_two_press_flow_pastes_automatically(make_engine, monkeypatch):
+    import dictation4me.desktop
+    notes = []
+    monkeypatch.setattr(dictation4me.desktop, "notify", notes.append)
+    engine, backend = make_engine()
+    engine.save_settings({"quick": {"auto_deliver": True, "output_mode": "attempt-paste"}})
+    assert press(engine)["state"] == "RECORDING"
+    assert press(engine)["state"] == "TRANSCRIBING"
+    ready(engine, "RECOVERABLE_RESULT")
+    assert backend.content == "Spoken text" and backend.paste_calls == 1
+    assert "Dictation pasted into the active app" in notes
+    assert not any("press shortcut to deliver" in n for n in notes)  # no 3rd-press prompt
+    assert press(engine)["state"] == "RECORDING"  # third press starts the next dictation
+
+
+def test_gui_flow_mapping():
+    from dictation4me.gui import NotebookUI
+    for flow in ("paste", "copy", "review"):
+        quick = NotebookUI._flow_settings(flow)
+        assert NotebookUI._flow(quick) == flow

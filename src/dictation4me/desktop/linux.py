@@ -5,6 +5,7 @@ import os
 import shutil
 import socket
 import subprocess
+import time
 from pathlib import Path
 
 from ..errors import AppError
@@ -14,6 +15,22 @@ from . import session_type
 class LinuxDesktop:
     def __init__(self):
         self.session = session_type()
+        # Set by the engine: where the RemoteDesktop portal restore token lives.
+        self.token_path: Path | None = None
+        self.last_paste_error = ""
+
+    def keyboard(self):
+        from .remote_desktop import RemoteDesktopKeyboard
+        if not self.token_path:
+            raise AppError("PASTE_UNAVAILABLE", "Keyboard access is not configured")
+        if getattr(self, "_keyboard", None) is None:
+            self._keyboard = RemoteDesktopKeyboard(self.token_path)  # one long-lived session
+        return self._keyboard
+
+    def close(self) -> None:
+        if getattr(self, "_keyboard", None) is not None:
+            self._keyboard.close()
+            self._keyboard = None
 
     def _command(self, argv: list[str], *, data: bytes | None = None, timeout: float = 4) -> bytes:
         if not shutil.which(argv[0]):
@@ -67,9 +84,22 @@ class LinuxDesktop:
         if self.session == "x11":
             self._command(["xdotool", "key", "--clearmodifiers", key])
             return "sent"
-        if self.session != "wayland" or not unsafe_wayland:
+        if self.session != "wayland":
             return "blocked"
-        # Requires explicit user consent and a separately provisioned, accessible ydotoold.
+        # Preferred: the RemoteDesktop portal. The desktop asks the user once;
+        # nothing privileged is installed or started by this app.
+        self.last_paste_error = ""
+        try:
+            time.sleep(0.12)  # let the compositor publish the new clipboard owner
+            self.keyboard().send_keys(valid[key])
+            return "sent"
+        except AppError as exc:
+            self.last_paste_error = str(exc)
+        except Exception:
+            self.last_paste_error = "Keyboard access through the desktop portal failed"
+        if not unsafe_wayland:
+            return "blocked"
+        # Fallback only with explicit opt-in and a separately provisioned, accessible ydotoold.
         # Never start a privileged helper or grant uinput permissions implicitly.
         if not shutil.which("ydotool"):
             return "blocked"

@@ -52,6 +52,7 @@ class Engine:
         self._last_error = ""
         self._hotkey = None
         self._hotkey_enabled = False
+        self._listeners: list = []
         self._hotkey_state = "not registered"
         last = self.store.quick()
         if last:
@@ -75,7 +76,34 @@ class Engine:
     def clipboard(self):
         if self._clipboard is None:
             self._clipboard = self.clipboard_factory()
+            if hasattr(self._clipboard, "token_path"):
+                self._clipboard.token_path = self.paths.state / "remote-desktop.token"
         return self._clipboard
+
+    def add_listener(self, callback) -> None:
+        """Called with the new state on every transition (tray indicator)."""
+        self._listeners.append(callback)
+        callback(self._state)
+
+    def active_shortcut(self) -> str:
+        description = getattr(self._hotkey, "description", None) if self._hotkey else None
+        return str(description or self.settings["quick"]["shortcut"])
+
+    def paste_status(self) -> dict:
+        backend = self.clipboard
+        wayland = desktop.session_type() == "wayland"
+        authorized = bool(wayland and hasattr(backend, "keyboard") and backend.keyboard().authorized)
+        return {"session": desktop.session_type(), "needs_permission": wayland,
+                "authorized": authorized or not wayland,
+                "last_error": getattr(backend, "last_paste_error", "")}
+
+    def paste_setup(self) -> dict:
+        """Explicit user action: ask the desktop for keyboard access once."""
+        backend = self.clipboard
+        if desktop.session_type() != "wayland" or not hasattr(backend, "keyboard"):
+            return self.paste_status()
+        backend.keyboard().authorize()
+        return self.paste_status()
 
     def start_hotkey(self):
         self._hotkey_enabled = True
@@ -116,10 +144,15 @@ class Engine:
             self._clipboard.close()
         self.store.close()
 
-    def _touch_state(self, value: str, *, message: str = ""):
+    def _touch_state(self, value: str, *, message: str = "", notify: bool = True):
         self._state = value
         self._last_error = message
-        if value in ("RECORDING", "READY", "ERROR", "RECOVERABLE_RESULT"):
+        for listener in list(self._listeners):
+            try:
+                listener(value)
+            except Exception:
+                pass  # a status indicator must never break dictation
+        if notify and value in ("RECORDING", "READY", "ERROR", "RECOVERABLE_RESULT"):
             labels = {"RECORDING": "Recording started — press shortcut to stop",
                       "READY": "Dictation ready — press shortcut to deliver",
                       "ERROR": "Dictation needs attention — open Recovery",
@@ -270,7 +303,9 @@ class Engine:
                 if session["mode"] == "note":
                     self._touch_state("IDLE")
                 else:
-                    self._touch_state("TRANSFORMING" if self.settings["ai"]["automatic_quick_preset_id"] else "READY")
+                    auto = self.settings["quick"]["auto_deliver"]
+                    self._touch_state("TRANSFORMING" if self.settings["ai"]["automatic_quick_preset_id"]
+                                      else "READY", notify=not auto)
             if session["mode"] == "quick" and self.settings["ai"]["automatic_quick_preset_id"]:
                 self._quick_transform_auto(session)
             elif session["mode"] == "quick":
@@ -336,8 +371,8 @@ class Engine:
         with self._state_lock:
             if session["generation"] != self._generation:
                 return
-            self._touch_state("READY")
             auto = session["mode"] == "quick" and self.settings["quick"]["auto_deliver"]
+            self._touch_state("READY", notify=not auto)
         if auto:
             try:
                 self.deliver_quick(session["quick_id"])
@@ -443,7 +478,14 @@ class Engine:
                 self.store.update_delivery(job_id, paste=status)
             self.store.mark_quick(item["id"], "delivered")
             with self._state_lock:
-                self._touch_state("RECOVERABLE_RESULT")
+                self._touch_state("RECOVERABLE_RESULT", notify=False)
+            if status == "sent":
+                desktop.notify("Dictation pasted into the active app")
+            elif should_paste:
+                reason = getattr(self.clipboard, "last_paste_error", "") or "not available here"
+                desktop.notify("Copied to clipboard — automatic paste failed: " + reason[:90])
+            else:
+                desktop.notify("Dictation copied — paste with Ctrl+V")
             return {"attempt_id": job_id, "clipboard_status": "copied", "paste_status": status,
                     "meaning": "Shortcut sent, if reported; actual field insertion cannot be verified"}
         except AppError as exc:
@@ -686,6 +728,10 @@ class Engine:
             return self.settings
         if action == "config.save":
             return self.save_settings(args.get("changes", {}), args.get("secrets"))
+        if action == "paste.status":
+            return self.paste_status()
+        if action == "paste.setup":
+            return self.paste_setup()
         if action == "credentials.status":
             return self.credential_status()
         if action == "credentials.import-env":
