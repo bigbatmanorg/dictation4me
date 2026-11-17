@@ -120,6 +120,10 @@
           </div>
           <textarea id="note-editor" spellcheck="true" placeholder="Start writing, or press Record to dictate. Markdown is supported." aria-label="Note text (Markdown)"></textarea>
           <div id="note-preview" class="markdown-view hidden"></div>
+          <div id="note-live" class="note-live hidden" aria-live="polite">
+            <div class="note-live-head"><i class="dot" aria-hidden="true"></i><strong id="note-live-state">Listening</strong><span id="note-live-hint" class="hint">Press Stop when you are done</span></div>
+            <p id="note-live-text" class="note-live-text placeholder">Start speaking — your words appear here and are added to the note when you stop.</p>
+          </div>
           <details id="recordings-details" class="recordings">
             <summary>Recordings <span id="recordings-count" class="count">0</span></summary>
             <div id="note-recordings" class="compact-list"></div>

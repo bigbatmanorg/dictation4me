@@ -357,3 +357,14 @@ dialog p { margin-top: 8px; color: var(--text-2); }
 }
 .paste-setup { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 9px 11px; border-radius: 9px; background: var(--surface-2); }
 .recovery-card .fix { margin-top: 6px; font-size: 12px; color: var(--text-2); line-height: 1.45; }
+
+/* Voice note: live transcript inside the editor (no floating window). */
+.note-live { margin-top: 10px; padding: 12px 14px; border-radius: 10px; background: var(--rec-soft);
+             border: 1px solid rgba(240, 106, 106, .35); border-left: 4px solid var(--rec); }
+.note-live-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.note-live-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--rec); animation: pulse 1.2s ease-in-out infinite; }
+.note-live-head .hint { margin-left: auto; }
+.note-live-text { margin-top: 8px; font-size: 15px; line-height: 1.6; color: var(--text); white-space: pre-wrap; }
+.note-live-text.placeholder { color: var(--text-3); font-style: italic; }
+.note-live.busy { background: var(--accent-soft); border-color: rgba(79, 142, 240, .35); border-left-color: var(--accent); }
+.note-live.busy .dot { background: var(--accent); }

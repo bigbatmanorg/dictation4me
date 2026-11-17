@@ -238,7 +238,7 @@ class Engine:
                 raise AppError("RECOVERY_PENDING", "Resolve/cancel previous quick capture before starting another")
             session = self._new_session(mode, note_id)
             self._session = session
-            stream = self._start_stream(session) if mode == "quick" else None
+            stream = self._start_stream(session)
             try:
                 self._recording = self.recorder_type(self.paths, session["recording_id"], self.settings["audio"])
                 if stream is not None and hasattr(self._recording, "tap"):
@@ -253,8 +253,8 @@ class Engine:
                 self._touch_state("ERROR", message=error.describe())
                 raise error from exc
             self._touch_state("RECORDING")
-            if stream is not None:
-                self._open_live_window()
+            if stream is not None and mode == "quick":
+                self._open_live_window()  # voice notes show live text inside the notebook
             return {"state": self._state, **session}
 
     # ── realtime transcription and live window ──
@@ -282,6 +282,8 @@ class Engine:
     def live_text(self) -> dict:
         stream = self._live_stream
         return {"state": self._state, "engine": self.settings["stt"]["engine"],
+                "mode": self._session.get("mode") if self._session else None,
+                "note_id": self._session.get("note_id") if self._session else None,
                 "stream": stream.state if stream else None, "text": stream.text if stream else "",
                 "error": stream.error.describe() if stream and stream.error else "",
                 "shortcut": self.active_shortcut(),

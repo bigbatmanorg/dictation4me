@@ -135,7 +135,10 @@ def ui_harness(monkeypatch, app_paths):
     import dictation4me.desktop
     monkeypatch.setattr(dictation4me.desktop, 'notify', lambda _: None)
     engine = Engine(app_paths)
-    monkeypatch.setattr(NotebookUI, 'call', lambda self, action, **params: engine.handle(action, params))
+    def call(self, rpc, /, **params):
+        params.pop('_timeout', None)
+        return engine.handle(rpc, params)
+    monkeypatch.setattr(NotebookUI, 'call', call)
     app = FakeApp()
     window = FakeWindow()
     ui = NotebookUI(app, window, app_paths)
@@ -289,3 +292,48 @@ def test_scope_buttons_and_recovery_empty_state(ui_harness):
     assert 'Trash is empty' in ui.doc.markup['note-items']
     ui.show_tab('recovery')
     assert 'Nothing to recover' in ui.doc.markup['recovery-items']
+
+
+@pytest.mark.parametrize('button,expect', [('btn-accept-current', 'replaced'),
+                                           ('btn-accept-alternative', 'version'),
+                                           ('btn-accept-new-note', 'new')])
+def test_ai_proposal_buttons(ui_harness, button, expect):
+    import time
+    engine, ui, _, _ = ui_harness
+    engine.ai = lambda src, cfg, preset: 'REWRITTEN ' + src
+    ui.doc.set_value('note-editor', 'hello world')
+    ui._input({'element': 'note-editor'})
+    ui.flush()
+    original = ui.selected_note
+    ui.doc.set_value('preset-select', ui.presets[0]['id'])
+    ui._click({'element': 'btn-transform-note'})
+    for _ in range(200):
+        ui._poll_job()
+        if not ui.pending_job:
+            break
+        time.sleep(.01)
+    assert ui.selected_proposal
+    ui._click({'element': button})
+    assert 'went wrong' not in ui.doc.texts['status-message']
+    if expect == 'replaced':
+        assert engine.store.get_note(original)['content_md'] == 'REWRITTEN hello world'
+        assert ui.doc.values['note-editor'] == 'REWRITTEN hello world'
+    elif expect == 'version':
+        assert engine.store.get_note(original)['content_md'] == 'hello world'
+    else:
+        assert ui.selected_note != original
+        assert engine.store.get_note(ui.selected_note)['content_md'] == 'REWRITTEN hello world'
+
+
+def test_voice_note_live_panel(ui_harness, monkeypatch):
+    engine, ui, _, _ = ui_harness
+    ui.settings["stt"]["engine"] = "realtime"
+    monkeypatch.setattr(engine, "live_text", lambda: {"text": " hello  live words", "state": "RECORDING"})
+    status = dict(engine.status(), state="RECORDING", mode="note")
+    ui._render_note_live(status)
+    assert "hidden" not in ui.doc.classes["note-live"]
+    assert ui.doc.texts["note-live-text"] == "hello live words"
+    ui._render_note_live(dict(status, state="TRANSCRIBING"))
+    assert ui.doc.texts["note-live-state"] == "Finishing…"
+    ui._render_note_live(dict(status, state="IDLE", mode=None))
+    assert "hidden" in ui.doc.classes["note-live"]

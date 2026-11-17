@@ -129,9 +129,11 @@ class NotebookUI:
         self.thread.start()
 
     # ── plumbing ──────────────────────────────────────────────
-    def call(self, action: str, **params):
+    def call(self, rpc: str, /, **params):
+        # Positional-only: RPC parameters may themselves be named "action"
+        # (ai.accept), which previously collided with this argument.
         timeout = params.pop("_timeout", 10)
-        return invoke(self.paths, action, params, timeout=timeout)
+        return invoke(self.paths, rpc, params, timeout=timeout)
 
     def notice(self, message: str, *, is_error: bool = False):
         """Transient toast; errors stay longer. Never contains note text or keys."""
@@ -195,7 +197,9 @@ class NotebookUI:
             return None
 
     def _poll(self):
-        while not self.stop_event.wait(.7):
+        # Poll faster while audio is being captured or transcribed so live text feels live.
+        while not self.stop_event.wait(.25 if self.last_state in ("RECORDING", "FINALIZING", "TRANSCRIBING")
+                                       else .7):
             if self.window.closed:
                 break
             status = self._status_or_none()
@@ -208,6 +212,7 @@ class NotebookUI:
                         continue
                     if self.current_tab == "quick" and not self.quick_dirty:
                         self.refresh_quick()
+                    self._render_note_live(status)
                     if (self.current_tab == "quick" and status["state"] == "RECORDING"
                             and self.settings.get("stt", {}).get("engine") == "realtime"):
                         live = self.call("live.get")
@@ -260,7 +265,9 @@ class NotebookUI:
         self.doc.set_text("connection-status", "Background service running")
         css, title, hint, label, action = PRESENTATION.get(state, PRESENTATION["ERROR"])
         flow = self._flow(self.settings["quick"]) if self.settings else "review"
-        if state == "RECORDING" and flow != "review":
+        if state == "RECORDING" and status.get("mode") == "note":
+            hint, label = "Recording into the open note. Press {key} or Stop when done.", "Stop & add to note"
+        elif state == "RECORDING" and flow != "review":
             hint = ("Speak now. Press {key} again to stop — the text is typed into the active app."
                     if flow == "paste" else "Speak now. Press {key} again to stop and copy the text.")
             label = "Stop & paste" if flow == "paste" else "Stop & copy"
@@ -291,6 +298,42 @@ class NotebookUI:
             self._toggle("btn-record-note", "hidden", recording_note)
         if state == "IDLE" and self.selected_note and self.current_tab == "notes":
             self.refresh_note_recordings()
+
+    def _render_note_live(self, status: dict):
+        """Inline live transcript for a voice note being recorded into the open note."""
+        active = (status.get("mode") == "note" and
+                  status["state"] in ("RECORDING", "FINALIZING", "TRANSCRIBING"))
+        was_active = getattr(self, "note_live_on", False)
+        if not active:
+            if was_active:
+                self.note_live_on = False
+                self.doc.add_class("note-live", "hidden")
+                if self.selected_note and not self.dirty:
+                    self._refresh_note_if_changed()
+                    self.refresh_note_recordings()
+            return
+        if not was_active:
+            self.note_live_on = True
+            self.note_live_last = None
+            self.doc.remove_class("note-live", "hidden")
+            self.doc.add_class("note-live-text", "placeholder")
+            realtime_on = self.settings.get("stt", {}).get("engine") == "realtime"
+            self.doc.set_text("note-live-text", "Start speaking — your words appear here and are added to the "
+                              "note when you stop." if realtime_on else
+                              "Recording… the text is added to the note after you press Stop.")
+        recording = status["state"] == "RECORDING"
+        self._toggle("note-live", "busy", not recording)
+        self.doc.set_text("note-live-state", "Listening" if recording else "Finishing…")
+        self.doc.set_text("note-live-hint", "Press Stop when you are done" if recording
+                          else "Adding the text to your note")
+        if self.settings.get("stt", {}).get("engine") != "realtime":
+            return
+        live = self.call("live.get")
+        text = " ".join((live.get("text") or "").split())
+        if text and text != self.note_live_last:
+            self.note_live_last = text
+            self.doc.remove_class("note-live-text", "placeholder")
+            self.doc.set_text("note-live-text", text)
 
     def _set_state_classes(self, ident: str, active: str):
         for cls in STATE_CLASSES:
@@ -794,8 +837,9 @@ class NotebookUI:
     def refresh_revisions(self):
         if not self.selected_note:
             return
-        labels = {"initial": "Created", "checkpoint": "Saved version", "transcript": "Dictation added",
-                  "restore": "Restored", "ai": "AI accepted"}
+        # Keys are the schema's note_revisions.kind values.
+        labels = {"initial": "Created", "manual": "Saved version", "transcript": "Dictation added",
+                  "ai_accepted": "AI rewrite applied", "restore": "Restored", "import": "Imported"}
         result = []
         for revision in self.call("notes.revisions", id=self.selected_note):
             ident = esc(revision["id"])

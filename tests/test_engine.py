@@ -478,3 +478,20 @@ def test_realtime_engine_uses_stream_or_falls_back(make_engine, monkeypatch, fai
     ready(engine)
     expected = "Spoken text" if fail else "live words"  # fallback = batch STT result
     assert engine.store.quick()["edited_text"] == expected
+
+
+def test_realtime_voice_note_appends_stream_text_without_window(make_engine, monkeypatch):
+    import dictation4me.engine as engine_module
+    monkeypatch.setattr(engine_module.realtime, "RealtimeStream", lambda cfg: FakeStream(cfg))
+    engine, _ = make_engine()
+    opened = []
+    monkeypatch.setattr(engine, "_open_live_window", lambda: opened.append(True))
+    engine.save_settings({"stt": {"engine": "realtime", "realtime_model": "asr-realtime"}})
+    note = engine.store.create_note("Voice", "")
+    engine.start_capture("note", note["id"])
+    live = engine.handle("live.get", {})
+    assert live["mode"] == "note" and live["note_id"] == note["id"] and live["stream"] == "live"
+    engine.stop_capture()
+    ready(engine, "IDLE")
+    assert engine.store.get_note(note["id"])["content_md"] == "live words"
+    assert not opened  # no floating window for voice notes
