@@ -443,3 +443,38 @@ def test_gui_flow_mapping():
     for flow in ("paste", "copy", "review"):
         quick = NotebookUI._flow_settings(flow)
         assert NotebookUI._flow(quick) == flow
+
+
+class FakeStream:
+    def __init__(self, cfg, *, text="live words", fail=False):
+        self.text, self.fail, self.fed, self.state, self.error = text, fail, 0, "live", None
+
+    def start(self):
+        pass
+
+    def feed(self, block, rate, channels):
+        self.fed += 1
+
+    def finish(self, timeout=20):
+        if self.fail:
+            raise AppError("REALTIME_UNAVAILABLE", "stream broke")
+        return self.text
+
+    def close(self):
+        pass
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_realtime_engine_uses_stream_or_falls_back(make_engine, monkeypatch, fail):
+    import dictation4me.engine as engine_module
+    monkeypatch.setattr(engine_module.realtime, "RealtimeStream",
+                        lambda cfg: FakeStream(cfg, fail=fail))
+    engine, _ = make_engine()
+    engine.live_window_enabled = False
+    engine.save_settings({"stt": {"engine": "realtime", "realtime_model": "asr-realtime"}})
+    press(engine)
+    assert engine.handle("live.get", {})["stream"] == "live"
+    press(engine)
+    ready(engine)
+    expected = "Spoken text" if fail else "live words"  # fallback = batch STT result
+    assert engine.store.quick()["edited_text"] == expected

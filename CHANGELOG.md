@@ -11,6 +11,11 @@ First release of the replacement implementation (NativeHTMLKit notebook + reside
 - Redesigned UI (see `docs/UX_REVIEW.md`): always-visible dictation status, state-driven Quick dictation, tabbed Settings with unsaved-changes bar, key-availability status, empty states, toasts and an anchored "More" menu.
 - `credentials.import-env`: move an environment-variable key into the OS keyring so it works when the service starts at login.
 
+- Two-press dictation with automatic paste through the KDE RemoteDesktop portal (one-time consent, restore token, one session per service run); "Shortcut behaviour" setting.
+- System tray indicator (StatusNotifierItem + dbusmenu): state icon, tooltip with shortcut, open notebook, start/stop, quit.
+- Realtime transcription over `/v1/realtime` (vLLM/LiteLLM) with a live transcript window; WAV still recorded and batch fallback on failure.
+- Actionable errors: every error code carries a fix hint shown in the UI, notifications, CLI ("How to fix: …") and `doctor`; provider HTTP errors are classified (auth, not found, rate limit, unreachable, timeout).
+
 ### Fixed (found on a real KDE Plasma Wayland desktop)
 - Settings could not be saved for plain-HTTP home-network servers (`http://pgx:4000/v1`).
 - `Meta`/`Super`/`Win` shortcut modifiers were rejected; shortcuts are now normalized and rebound live without a restart.

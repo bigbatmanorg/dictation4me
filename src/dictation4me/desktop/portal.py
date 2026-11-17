@@ -40,7 +40,8 @@ class PortalShortcut:
             self.error = str(exc)
             self.ready.set()
         except Exception:
-            self.error = "GlobalShortcuts portal unavailable or denied; configure KDE shortcut for 'dictation4me toggle'"
+            self.error = ("The desktop shortcut portal is unavailable — bind 'dictation4me toggle' as a custom "
+                          "shortcut in System Settings › Keyboard › Shortcuts")
             self.ready.set()
 
     async def _run(self):

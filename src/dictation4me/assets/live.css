@@ -1,0 +1,16 @@
+:root { color-scheme: dark; font-family: Inter, "Segoe UI", "Noto Sans", system-ui, sans-serif; }
+html, body { margin: 0; height: 100%; background: #121b2a; color: #e6edf8; overflow: hidden; }
+.live { height: 100%; box-sizing: border-box; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px;
+        border: 1px solid #2c3d58; border-left: 4px solid #f06a6a; }
+.bar { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #f06a6a; animation: pulse 1.2s ease-in-out infinite; }
+.hint { margin-left: auto; color: #8396b1; font-size: 12px; }
+.text { margin: 0; flex: 1; overflow: hidden; font-size: 17px; line-height: 1.45;
+        display: flex; flex-direction: column; justify-content: flex-end; }
+.placeholder { color: #6d809c; font-style: italic; }
+.live.state-busy { border-left-color: #4f8ef0; }
+.live.state-busy .dot { background: #4f8ef0; }
+.live.state-error { border-left-color: #f0b45a; }
+.live.state-error .dot { background: #f0b45a; animation: none; }
+@keyframes pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .dot { animation: none; } }

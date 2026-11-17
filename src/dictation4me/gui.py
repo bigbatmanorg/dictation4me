@@ -164,7 +164,7 @@ class NotebookUI:
         try:
             return fn(*args, **kwargs)
         except AppError as exc:
-            self.notice(f"{exc}", is_error=True)
+            self.notice(exc.describe(), is_error=True)
         except Exception:
             # UI exceptions cannot include raw provider URLs, credentials or note text.
             self._log_exception()
@@ -208,6 +208,12 @@ class NotebookUI:
                         continue
                     if self.current_tab == "quick" and not self.quick_dirty:
                         self.refresh_quick()
+                    if (self.current_tab == "quick" and status["state"] == "RECORDING"
+                            and self.settings.get("stt", {}).get("engine") == "realtime"):
+                        live = self.call("live.get")
+                        if live.get("text"):
+                            tail = " ".join(live["text"].split())[-220:]
+                            self.doc.set_text("capture-detail", "“" + tail + "”")
                     if self.pending_job:
                         self._poll_job()
                     if (self.current_tab == "notes" and self.selected_note and not self.dirty
@@ -369,7 +375,7 @@ class NotebookUI:
             except AppError as exc:
                 self.doc.set_text("save-status", "Not saved — your text is still here")
                 self.doc.add_class("save-status", "error")
-                self.notice(f"Saving failed ({exc.code}). Your text is kept in the editor.", is_error=True)
+                self.notice(f"Saving failed — your text is kept in the editor. {exc.describe()}", is_error=True)
                 return False
 
     def flush_quick(self) -> bool:
@@ -879,7 +885,9 @@ class NotebookUI:
         if state != "succeeded" or not result.get("proposal"):
             code = result["job"].get("error_code") or "unknown error"
             self.doc.set_text("proposal-meta", f"The AI rewrite failed ({code}).")
-            self.notice(f"AI rewrite failed ({code}). Check Settings › Connections.", is_error=True)
+            from .errors import HINTS
+            self.notice(f"AI rewrite failed ({code}). Fix: " + HINTS.get(code, "check Settings › Connections"),
+                        is_error=True)
             return
         p = result["proposal"]
         if task["kind"] == "note":
@@ -990,7 +998,10 @@ class NotebookUI:
     # ── recovery ──────────────────────────────────────────────
     def refresh_recovery(self):
         items = self.call("recordings.recovery")
+        from .errors import HINTS
         reasons = {"NO_SPEECH": "No speech detected", "PROVIDER_HTTP": "Server returned an error",
+                   "PROVIDER_AUTH": "API key rejected", "PROVIDER_NOT_FOUND": "Model or endpoint not found",
+                   "PROVIDER_RATE_LIMIT": "Server rate limit", "PROVIDER_OUTPUT": "Unexpected server reply",
                    "PROVIDER_UNAVAILABLE": "Server unreachable", "SECRET": "API key unavailable",
                    "MODEL_NOT_CONFIGURED": "No model configured", "CONSENT": "Remote server not approved",
                    "AUDIO_EMPTY": "Recording was empty", "AUDIO_MISSING": "Audio file missing"}
@@ -1005,7 +1016,9 @@ class NotebookUI:
                       else f'<button id="recover-salvage--{ident}" class="small">Repair audio</button>')
             result.append(f'<div class="recovery-card"><div class="info"><div class="title">{kind}</div>'
                           f'<div class="sub">{esc(self._when(r["created_at"]))} · {size}</div>'
-                          f'<span class="reason">{esc(reason)}</span></div>{action}'
+                          f'<span class="reason">{esc(reason)}</span>'
+                          + (f'<div class="fix">How to fix: {esc(HINTS[code])}</div>' if code in HINTS else "")
+                          + f'</div>{action}'
                           f'<button id="recover-delete--{ident}" class="ghost danger small">Discard</button></div>')
         if not result:
             result.append('<div class="empty-state"><svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">'
@@ -1034,6 +1047,10 @@ class NotebookUI:
                 self.doc.set_value(f"cfg-{prefix}-{short}", cfg[key])
             self.doc.set_value(f"cfg-{prefix}-secret", "")
         self.doc.set_value("cfg-stt-profile", self.settings["stt"]["request_profile"])
+        self.doc.set_value("cfg-stt-engine", self.settings["stt"]["engine"])
+        self.doc.set_value("cfg-stt-realtime-model", self.settings["stt"]["realtime_model"])
+        self.doc.set_value("cfg-stt-realtime-path", self.settings["stt"]["realtime_path"])
+        self.doc.set_checked("cfg-live-window", self.settings["quick"]["live_window"])
         self.doc.set_value("cfg-shortcut", self.settings["quick"]["shortcut"])
         self.doc.set_value("cfg-flow", self._flow(self.settings["quick"]))
         self.doc.set_value("cfg-paste-shortcut", self.settings["quick"]["paste_shortcut"])
@@ -1066,7 +1083,9 @@ class NotebookUI:
             elif info["available"]:
                 text, ok = "Key found: " + info["detail"].lower() + ".", True
             else:
-                text, ok = "Key not available to the background service: " + info["detail"], False
+                from .errors import HINTS
+                text, ok = ("Key not available to the background service: " + info["detail"] +
+                            ". Fix: " + HINTS["SECRET"]), False
             if info["available"] and info["source"] == "environment":
                 text += " It will be missing if the service starts at login — move it to the keyring."
                 ok = False
@@ -1122,7 +1141,7 @@ class NotebookUI:
                         self.settings_feedback("Automatic pasting is allowed")
             except AppError as exc:
                 if not self.stop_event.is_set():
-                    self.settings_feedback(f"Keyboard access not granted: {exc}", is_error=True)
+                    self.settings_feedback(f"Keyboard access not granted: {exc.describe()}", is_error=True)
                     with self.lock:
                         self.refresh_paste_status()
         threading.Thread(target=work, name="dictation-paste-setup", daemon=True).start()
@@ -1151,6 +1170,9 @@ class NotebookUI:
             if secret:
                 secrets[section] = secret
         changes["stt"]["request_profile"] = self.doc.get_value("cfg-stt-profile")
+        changes["stt"]["engine"] = self.doc.get_value("cfg-stt-engine") or "batch"
+        changes["stt"]["realtime_model"] = self.doc.get_value("cfg-stt-realtime-model").strip()
+        changes["stt"]["realtime_path"] = self.doc.get_value("cfg-stt-realtime-path").strip() or "/realtime"
         changes["ai"]["automatic_quick_preset_id"] = self.doc.get_value("cfg-auto-preset")
         changes["audio"] = {"device": self.doc.get_value("cfg-audio-device")}
         changes["privacy"] = {
@@ -1162,12 +1184,13 @@ class NotebookUI:
             **self._flow_settings(self.doc.get_value("cfg-flow")),
             "paste_shortcut": self.doc.get_value("cfg-paste-shortcut"),
             "quick_text_retention_hours": int(self.doc.get_value("cfg-retention") or 24),
-            "paste_to_current_focus_unsafe_wayland": bool(self.doc.get_checked("cfg-unsafe-wayland"))}
+            "paste_to_current_focus_unsafe_wayland": bool(self.doc.get_checked("cfg-unsafe-wayland")),
+            "live_window": bool(self.doc.get_checked("cfg-live-window"))}
         try:
             result = self.call("config.save", changes=changes, secrets=secrets)
         except AppError as exc:
             # Nothing was written: the service validates the whole change set first.
-            self.settings_feedback(f"Not saved — {exc}", is_error=True)
+            self.settings_feedback(f"Not saved — {exc.describe()}", is_error=True)
             raise
         self.settings = result["settings"]
         self.load_settings()
@@ -1230,7 +1253,7 @@ class NotebookUI:
                     self.settings_feedback(f"AI server works — the model replied ({result.get('characters')} characters)")
             except AppError as exc:
                 if not self.stop_event.is_set():
-                    self.settings_feedback(f"AI test failed: {exc}", is_error=True)
+                    self.settings_feedback(f"AI test failed: {exc.describe()}", is_error=True)
         threading.Thread(target=work, name="dictation-ai-test", daemon=True).start()
 
     def test_stt(self):
@@ -1247,10 +1270,72 @@ class NotebookUI:
                     result = self.call("provider.test-stt", file=value["paths"][0], _timeout=130)
                     self.settings_feedback(f"Speech-to-text works — {result.get('characters')} characters transcribed")
             except AppError as exc:
-                self.settings_feedback(f"Speech-to-text test failed: {exc}", is_error=True)
+                self.settings_feedback(f"Speech-to-text test failed: {exc.describe()}", is_error=True)
             except Exception:
                 self.settings_feedback("The file dialog could not be opened", is_error=True)
         future.add_done_callback(selected)
+
+
+def _live_loop(window, paths: Paths, stop: threading.Event) -> None:
+    """Mirror the service's live transcript; exit once dictation is over."""
+    doc = window.document
+    last = (None, None, None)
+    gone_since = None
+    while not stop.wait(0.15):
+        if window.closed:
+            return
+        try:
+            info = invoke(paths, "live.get", {}, timeout=2)
+        except AppError:
+            info = {"state": "OFFLINE", "text": "", "error": "", "shortcut": "", "flow": "review"}
+        state = info["state"]
+        if state not in ("RECORDING", "FINALIZING", "TRANSCRIBING", "TRANSFORMING"):
+            gone_since = gone_since or time.monotonic()
+            if time.monotonic() - gone_since > 1.0:
+                window.request_close()
+                return
+            continue
+        gone_since = None
+        text = " ".join((info.get("text") or "").split())
+        key = info.get("shortcut") or "the shortcut"
+        if state == "RECORDING":
+            label, css = "Listening", "state-recording"
+            action = {"paste": "stop and paste", "copy": "stop and copy"}.get(info.get("flow"), "stop")
+            hint = f"Press {key} to {action}"
+        else:
+            label, css, hint = "Finishing…", "state-busy", "Almost done"
+        if info.get("error"):
+            label, css, hint = "Live text unavailable", "state-error", "The recording is still saved"
+        current = (label, hint, text)
+        if current == last:
+            continue
+        last = current
+        for cls in ("state-recording", "state-busy", "state-error"):
+            (doc.add_class if cls == css else doc.remove_class)("live", cls)
+        doc.set_text("live-state", label)
+        doc.set_text("live-hint", hint)
+        if text:
+            doc.remove_class("live-text", "placeholder")
+            doc.set_text("live-text", ("…" + text[-280:]) if len(text) > 280 else text)
+
+
+def live_main() -> int:
+    """Small always-fresh window with the live transcript (started by the service)."""
+    try:
+        from nativehtmlkit import Application
+    except ImportError as exc:
+        raise AppError("GUI_UNAVAILABLE", "The NativeHTMLKit package is missing") from exc
+    with Application.start(name="Dictation4me live", app_id="org.bigbatmanorg.dictation4me.live") as app:
+        paths = Paths.discover()
+        window = app.create_window(title="Dictation4me — live", width=560, height=150,
+                                   decorations=False, min_width=320, min_height=110)
+        window.load_file(Path(str(files("dictation4me").joinpath("assets/live.html"))))
+        stop = threading.Event()
+        app.on_shutdown(stop.set)
+        threading.Thread(target=_live_loop, args=(window, paths, stop), daemon=True,
+                         name="dictation-live").start()
+        app.run()
+    return 0
 
 
 def main(*, initial_tab: str = "notes") -> int:

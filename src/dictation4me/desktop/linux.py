@@ -34,7 +34,9 @@ class LinuxDesktop:
 
     def _command(self, argv: list[str], *, data: bytes | None = None, timeout: float = 4) -> bytes:
         if not shutil.which(argv[0]):
-            raise AppError("DESKTOP_DEPENDENCY", f"{argv[0]} is not installed")
+            package = {"wl-copy": "wl-clipboard", "wl-paste": "wl-clipboard"}.get(argv[0], argv[0])
+            raise AppError("DESKTOP_DEPENDENCY", f"{argv[0]} is not installed",
+                           hint=f"Install it: sudo apt install {package}")
         try:
             result = subprocess.run(argv, input=data, stdin=subprocess.DEVNULL if data is None else None,
                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -94,7 +96,7 @@ class LinuxDesktop:
             self.keyboard().send_keys(valid[key])
             return "sent"
         except AppError as exc:
-            self.last_paste_error = str(exc)
+            self.last_paste_error = exc.describe()
         except Exception:
             self.last_paste_error = "Keyboard access through the desktop portal failed"
         if not unsafe_wayland:

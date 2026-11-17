@@ -225,8 +225,13 @@
             <div class="card-head"><h3>Speech-to-text</h3><span class="hint">Turns your recordings into text</span></div>
             <label for="cfg-stt-url">Server URL</label>
             <input id="cfg-stt-url" type="url" placeholder="http://127.0.0.1:4000/v1">
-            <label for="cfg-stt-model">Model</label>
-            <input id="cfg-stt-model" type="text" placeholder="e.g. whisper-1">
+            <label for="cfg-stt-engine">Transcription mode</label>
+            <select id="cfg-stt-engine"><option value="batch">After you stop (upload the recording)</option><option value="realtime">Live while you speak (realtime stream)</option></select>
+            <div class="row-2">
+              <div><label for="cfg-stt-model">Model</label><input id="cfg-stt-model" type="text" placeholder="e.g. whisper-1"></div>
+              <div><label for="cfg-stt-realtime-model">Realtime model</label><input id="cfg-stt-realtime-model" type="text" placeholder="e.g. asr-realtime"></div>
+            </div>
+            <p class="hint">Live mode streams audio while you speak and shows the words as they come. The recording is still saved, and the normal model is used if the live stream fails.</p>
             <div class="row-2">
               <div><label for="cfg-stt-source">API key</label>
                 <select id="cfg-stt-source"><option value="none">Not needed</option><option value="environment">Environment variable</option><option value="keyring">System keyring</option></select></div>
@@ -240,6 +245,7 @@
               <label for="cfg-stt-path">Endpoint path</label><input id="cfg-stt-path" type="text">
               <label for="cfg-stt-profile">Request format</label>
               <select id="cfg-stt-profile"><option value="minimal">Basic (file and model)</option><option value="openai-modern">OpenAI JSON response</option><option value="legacy-language">With language hint</option></select>
+              <label for="cfg-stt-realtime-path">Realtime endpoint path</label><input id="cfg-stt-realtime-path" type="text">
             </details>
             <div class="card-foot"><button id="btn-test-stt">Test with a WAV file…</button></div>
           </div>
@@ -285,6 +291,7 @@
             <label for="cfg-audio-device">Input device</label>
             <select id="cfg-audio-device"><option value="default">System default</option></select>
             <p class="hint">“System default” follows your desktop sound settings.</p>
+            <label class="check"><input id="cfg-live-window" type="checkbox"><span>Show a small live transcript window while dictating <span class="muted">(live mode; it closes before the text is pasted)</span></span></label>
           </div>
           <div class="card">
             <div class="card-head"><h3>Shortcut behaviour</h3></div>

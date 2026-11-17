@@ -6,18 +6,21 @@ You choose the speech-to-text and AI servers (any OpenAI-compatible endpoint, lo
 
 ![Notes](docs/screenshots/notes.png)
 
-| Quick dictation | Settings |
-|---|---|
-| ![Recording](docs/screenshots/quick-recording.png) | ![Connections](docs/screenshots/settings-connections.png) |
+| Live window while dictating | Quick dictation | Settings |
+|---|---|---|
+| ![Live](docs/screenshots/live-window.png) | ![Recording](docs/screenshots/quick-recording.png) | ![Connections](docs/screenshots/settings-connections.png) |
 
 ## Features
 
-- **Global shortcut workflow:** press to record, press to stop and transcribe, press to copy the result. While processing, presses are ignored. Delivery is clipboard-only by default; sending paste keys is opt-in.
+- **Two-press dictation:** press the shortcut to record, press again to stop. The text is typed into the app you are in (or copied, or held for review: your choice in Settings › Dictation). On KDE Wayland pasting uses the desktop's Remote Control permission, approved once; nothing privileged is installed.
+- **Live transcription (optional):** with a realtime model (e.g. Voxtral via vLLM/LiteLLM `/v1/realtime`) a small window shows your words as you speak and closes before the text is pasted. The recording is still saved, and the normal model takes over if the stream fails.
+- **Tray icon:** a microphone in the system tray turns into a red dot while recording; click it to open the notebook, right-click for Start/Stop and Quit.
 - **Always-visible status:** the sidebar shows what dictation is doing (Ready, Recording, Transcribing, Text ready, Needs attention) on every screen, alongside desktop notifications.
 - **Notebook:** folders, tags, pins, archive and trash, Markdown with preview, autosave, and a full version history (restoring creates a new version).
 - **Voice notes:** record straight into a note. If you kept typing meanwhile, your typing wins and the transcript waits under *Recordings* to be added.
 - **AI rewrite:** eight built-in instructions plus your own presets. Results are proposals: *Replace note*, *Keep as version*, *New note* or *Discard*.
 - **Nothing is lost:** failed or silent recordings stay in **Recovery** until you retry or discard them.
+- **Errors tell you how to fix them:** every message in the app, notifications and CLI comes with a concrete fix (package to install, setting to change, log to read); `dictation4me doctor` lists problems with fixes.
 - **Private by design:** keys come from an environment variable or the OS keyring (never the config file); remote servers need explicit approval; TLS checks cannot be disabled.
 
 ## Install
@@ -50,6 +53,8 @@ dictation4me gui
    - **Environment variable:** works when the service inherits it, e.g. when started from a terminal. A service started at login does **not** see variables from `~/.bashrc`. The card shows whether the key is available, and **Move key to keyring** fixes it in one click.
 3. Use **Test connection** / **Test with a WAV file…** to check each server.
 4. Approve the shortcut in the KDE dialog that appears the first time (default `Ctrl+Alt+D`).
+5. For two-press dictation, choose **Settings › Dictation › Shortcut behaviour: type the text into the active app** and click **Allow automatic pasting…** once (approve the KDE "Remote Control" dialog with "Allow restoring" ticked).
+6. Optional live text: **Settings › Connections › Transcription mode: Live**, and enter the realtime model (for LiteLLM + vLLM Voxtral: `asr-realtime`).
 
 ### About the global shortcut on KDE
 
@@ -59,13 +64,13 @@ The preferred shortcut in Settings is offered to KDE when the app first register
 
 | Action | Result |
 |---|---|
-| Shortcut, first press | Start recording (notification + sidebar turns red) |
-| Shortcut, second press | Stop and transcribe |
-| Shortcut when *Text ready* | Copy to clipboard; paste with `Ctrl+V` |
-| Shortcut after copying | Start a new recording |
+| Shortcut, first press | Start recording (tray dot and sidebar turn red; live window in live mode) |
+| Shortcut, second press | Stop, transcribe and type the text into the active app (or copy, per setting) |
+| Shortcut when *Text ready* (review mode only) | Copy to clipboard; paste with `Ctrl+V` |
+| Next press | Start a new recording |
 | `Ctrl+N` / `Ctrl+S` / `Ctrl+K` in the window | New note / save a version (or save settings) / search |
 
-Pasting into other apps can't be verified. Copying to the clipboard can, so the app reports only what it can confirm. On Wayland, automatic pasting needs a separately configured `ydotoold` and is off by default.
+The text always goes to the clipboard first, then the paste keys are sent once to the focused window; whether the app accepted them cannot be verified. For terminals choose `Ctrl+Shift+V` as paste keys. The live window takes keyboard focus while you speak and is closed before pasting so focus returns to your app.
 
 ## Command line
 
@@ -113,6 +118,6 @@ Tests use isolated `DICTATION4ME_HOME` profiles and never register real global s
 
 ## Status and limitations
 
-Qualified on KDE Plasma 6 Wayland (Debian 13 and Ubuntu 26.04) with real microphone, portal shortcut, clipboard and OpenAI-compatible servers. **Windows x64 has not been qualified yet.** There is no macOS support, no floating overlay or tray icon (status comes via notifications and the sidebar), no rich-text editor (Markdown source plus preview), and no live streaming transcription.
+Qualified on KDE Plasma 6 Wayland (Debian 13 and Ubuntu 26.04) with real microphone, portal shortcut, clipboard and OpenAI-compatible servers. **Windows x64 has not been qualified yet.** There is no macOS support, no tray icon on Windows yet (Linux has one), no rich-text editor (Markdown source plus preview), and no live streaming transcription.
 
 License: MIT.

@@ -35,7 +35,9 @@ def _post(cfg: dict, *, files_data: dict | None = None, form_data: dict | None =
                 if response.status_code in (301, 302, 303, 307, 308):
                     raise AppError("PROVIDER_REDIRECT", "Provider redirected the request; redirects are disabled")
                 if response.status_code >= 400:
-                    raise AppError("PROVIDER_HTTP", f"Provider returned HTTP {response.status_code}")
+                    code = {401: "PROVIDER_AUTH", 403: "PROVIDER_AUTH", 404: "PROVIDER_NOT_FOUND",
+                            429: "PROVIDER_RATE_LIMIT"}.get(response.status_code, "PROVIDER_HTTP")
+                    raise AppError(code, f"Server returned HTTP {response.status_code}")
                 if response.status_code != 200:
                     raise AppError("PROVIDER_HTTP", f"Unexpected provider status {response.status_code}")
                 chunks = []
@@ -51,9 +53,14 @@ def _post(cfg: dict, *, files_data: dict | None = None, form_data: dict | None =
         return result
     except AppError:
         raise
-    except (httpx.HTTPError, ValueError, json.JSONDecodeError) as exc:
+    except httpx.TimeoutException as exc:
+        raise AppError("PROVIDER_UNAVAILABLE", "The server did not answer in time",
+                       hint="Raise the timeout or check the server load; the recording stays in Recovery") from exc
+    except httpx.ConnectError as exc:
         # Do not return raw httpx exceptions: they can include URLs and credentials.
-        raise AppError("PROVIDER_UNAVAILABLE", "Provider request failed or returned invalid JSON") from exc
+        raise AppError("PROVIDER_UNAVAILABLE", "Cannot connect to the server") from exc
+    except (httpx.HTTPError, ValueError, json.JSONDecodeError) as exc:
+        raise AppError("PROVIDER_OUTPUT", "The server sent an invalid reply") from exc
 
 
 def transcribe(audio_file: Path, cfg: dict, *, transport: httpx.BaseTransport | None = None) -> dict:

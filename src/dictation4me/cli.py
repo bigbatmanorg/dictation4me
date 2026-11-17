@@ -122,6 +122,7 @@ def parser() -> argparse.ArgumentParser:
     init.add_argument("--no-desktop", action="store_true")
     sub.add_parser("gui", help="Open NativeHTMLKit notebook")
     sub.add_parser("quick-review", help="Open notebook on Quick tab")
+    sub.add_parser("live", help="Live transcript window (opened automatically when realtime is on)")
     sub.add_parser("toggle", help="External desktop shortcut: start, stop or deliver")
     sub.add_parser("cancel", help="Cancel active capture (audio remains recoverable)")
     sub.add_parser("copy-last")
@@ -256,6 +257,9 @@ def main(argv=None) -> int:
                 time.sleep(.5)  # let the transient unit be collected
                 output(ensure_service(paths))
             return 0
+        if args.command == "live":
+            from .gui import live_main
+            return live_main()
         if args.command in ("gui", "quick-review"):
             from .gui import main as gui_main
             return gui_main(initial_tab="quick" if args.command == "quick-review" else "notes")
@@ -330,6 +334,8 @@ def main(argv=None) -> int:
         return 2
     except AppError as exc:
         print(f"ERROR [{exc.code}]: {exc}", file=sys.stderr)
+        if exc.hint:
+            print(f"  How to fix: {exc.hint}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         print("Interrupted", file=sys.stderr)

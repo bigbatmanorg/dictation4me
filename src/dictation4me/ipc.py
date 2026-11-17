@@ -88,12 +88,15 @@ class RpcServer:
                         result = owner.callback(req["action"], args)
                         output = {"ok": True, "result": result, "id": req.get("id")}
                     except AppError as exc:
-                        output = {"ok": False, "error": {"code": exc.code, "message": str(exc)}}
+                        output = {"ok": False, "error": {"code": exc.code, "message": str(exc),
+                                                         "hint": exc.hint}}
                     except (ValueError, TypeError, json.JSONDecodeError):
                         output = {"ok": False, "error": {"code": "INVALID", "message": "Malformed IPC message"}}
                     except Exception:
                         # Exception strings may contain note content or provider URLs.
-                        output = {"ok": False, "error": {"code": "INTERNAL", "message": "Internal service error; see doctor"}}
+                        import traceback
+                        traceback.print_exc()  # type + stack to service.log for troubleshooting
+                        output = {"ok": False, "error": {"code": "INTERNAL", "message": "Internal service error"}}
                     encoded = json.dumps(output, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
                     if len(encoded) > MAX_REPLY:
                         encoded = b'{"ok":false,"error":{"code":"TOO_LARGE","message":"Result exceeds IPC limit"}}\n'
@@ -156,5 +159,6 @@ def invoke(paths: Paths, action: str, params: dict | None = None, *, timeout: fl
         raise AppError("SERVICE_UNAVAILABLE", "The Dictation4me resident service is not reachable") from exc
     if not result.get("ok"):
         error = result.get("error") or {}
-        raise AppError(str(error.get("code", "SERVICE")), str(error.get("message", "Service request failed")))
+        raise AppError(str(error.get("code", "SERVICE")), str(error.get("message", "Service request failed")),
+                       hint=error.get("hint") or None)
     return result.get("result")

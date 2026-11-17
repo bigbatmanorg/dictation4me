@@ -19,14 +19,15 @@ DEFAULTS = {
     "stt": {"base_url": "http://127.0.0.1:4000/v1", "path": "/audio/transcriptions",
             "model": "", "request_profile": "minimal", "key_source": "none",
             "key_reference": "", "timeout_seconds": 120, "max_file_mb": 25,
-            "language_hint": "auto"},
+            "language_hint": "auto", "engine": "batch", "realtime_model": "",
+            "realtime_path": "/realtime"},
     "ai": {"base_url": "http://127.0.0.1:4000/v1", "path": "/chat/completions",
            "model": "", "key_source": "none", "key_reference": "", "timeout_seconds": 120,
            "max_source_chars": 80000, "max_output_chars": 120000,
            "automatic_quick_preset_id": ""},
     "quick": {"shortcut": "Ctrl+Alt+D", "manual_delivery": True, "auto_deliver": False,
               "paste_to_current_focus_unsafe_wayland": False, "output_mode": "clipboard",
-              "paste_shortcut": "Ctrl+V", "quick_text_retention_hours": 24,
+              "paste_shortcut": "Ctrl+V", "quick_text_retention_hours": 24, "live_window": True,
               "record_audio_success_retention": "delete_after_transcription"},
     "privacy": {"confirm_remote_provider": True, "remote_provider_approved": False,
                 "send_diagnostics": False, "log_content": False},
@@ -146,6 +147,11 @@ def validate(config: dict) -> dict:
             raise AppError("CONFIG", f"{name} keyring source requires a reference")
         if not 1 <= cfg["timeout_seconds"] <= 600:
             raise AppError("CONFIG", "Provider timeout must be 1 to 600 seconds")
+    if clean["stt"]["engine"] not in ("batch", "realtime"):
+        raise AppError("CONFIG", "Transcription mode must be batch or realtime")
+    if len(clean["stt"]["realtime_model"]) > 200 or not re.fullmatch(
+            r"/[a-zA-Z0-9_./-]{1,100}", clean["stt"]["realtime_path"]) or ".." in clean["stt"]["realtime_path"]:
+        raise AppError("CONFIG", "Invalid realtime model name or path")
     if clean["stt"]["request_profile"] not in ("minimal", "openai-modern", "legacy-language"):
         raise AppError("CONFIG", "Invalid STT request profile")
     if not 1 <= clean["stt"]["max_file_mb"] <= 200:

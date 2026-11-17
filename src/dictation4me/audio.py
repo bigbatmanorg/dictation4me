@@ -32,6 +32,9 @@ class AudioRecorder:
         self.rate = int(settings["sample_rate"])
         self.channels = int(settings["channels"])
         self.overflows = 0
+        # Optional consumer of written PCM blocks (realtime transcription).
+        # Called from the writer thread, never from the PortAudio callback.
+        self.tap = None
 
     def start(self) -> None:
         try:
@@ -103,6 +106,11 @@ class AudioRecorder:
                                 continue
                             wav.writeframesraw(block)
                             self._bytes += len(block)
+                            if self.tap:
+                                try:
+                                    self.tap(block, sampling, channels)
+                                except Exception:
+                                    self.tap = None  # live text is optional; the WAV is not
                             # Every second, flush the audio blocks even though
                             # the WAV length fields are finalized only on stop.
                             # repair_spool() can recover a crash-interrupted file.

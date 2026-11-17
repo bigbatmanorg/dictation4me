@@ -12,6 +12,7 @@ from contextlib import closing
 from . import __version__
 from .config import load
 from .desktop import session_type
+from .errors import HINTS
 from .paths import Paths
 
 
@@ -32,23 +33,28 @@ def doctor(paths: Paths) -> dict:
         info["service_state"] = state_reply["state"]
         info["hotkey"] = state_reply["hotkey"]
     except Exception:
-        info["issues"].append("Service not running; use 'dictation4me service start'")
+        info["issues"].append("Background service is not running. Fix: " + HINTS["SERVICE_UNAVAILABLE"])
     for package in ("nativehtmlkit",):
         try:
             info[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
-            info["issues"].append(f"Python package '{package}' unavailable")
+            info["issues"].append(f"Python package '{package}' is missing. Fix: " + HINTS["GUI_UNAVAILABLE"])
     try:
         from .audio import devices
         info["audio_input_count"] = len(devices())
         info["audio_dependency"] = True
-    except Exception:
-        info["issues"].append("Audio device enumeration unavailable; check PortAudio/microphone")
+    except Exception as exc:
+        code = getattr(exc, "code", "AUDIO_UNAVAILABLE")
+        try:
+            import sounddevice  # noqa: F401
+        except (ImportError, OSError):
+            code = "AUDIO_UNAVAILABLE"
+        info["issues"].append("Microphone is not usable. Fix: " + HINTS.get(code, HINTS["AUDIO_OPEN_FAILED"]))
     try:
         import keyring
         info["keyring_available"] = bool(keyring.get_keyring().priority > 0)
     except Exception:
-        info["issues"].append("Keyring unavailable; use environment credentials if needed")
+        info["issues"].append("No OS keyring. Fix: " + HINTS["KEYRING"])
     with closing(sqlite3.connect(":memory:")) as db:
         try:
             db.execute("CREATE VIRTUAL TABLE test_fts USING fts5(value)")
@@ -60,7 +66,16 @@ def doctor(paths: Paths) -> dict:
         info["clipboard_read_available"] = shutil.which("wl-paste") is not None
         info["paste_backend_ready"] = shutil.which("ydotool") is not None and os.access("/dev/uinput", os.W_OK)
         if not info["clipboard_copy_available"] or not info["clipboard_read_available"]:
-            info["issues"].append("Wayland needs wl-clipboard for copy/read")
+            info["issues"].append("Clipboard tools missing. Fix: sudo apt install wl-clipboard")
+        try:
+            import shutil as _sh
+            from pathlib import Path as _P
+            apps = _P.home() / ".local/share/applications/org.bigbatmanorg.dictation4me.desktop"
+            if not apps.exists() and not _sh.which("dictation4me-gui"):
+                info["issues"].append("Desktop entry missing (needed for the KDE shortcut and auto-paste). "
+                                      "Fix: dictation4me init")
+        except OSError:
+            pass
     elif state == "x11":
         info["clipboard_copy_available"] = shutil.which("xclip") is not None
         info["paste_backend_ready"] = shutil.which("xdotool") is not None
@@ -74,7 +89,10 @@ def doctor(paths: Paths) -> dict:
         info["configuration"] = "valid" if paths.config_file.exists() else "defaults-only"
         info["stt_model_configured"] = bool(cfg["stt"]["model"])
         info["ai_model_configured"] = bool(cfg["ai"]["model"])
+        if not cfg["stt"]["model"]:
+            info["issues"].append("No speech-to-text model. Fix: " + HINTS["MODEL_NOT_CONFIGURED"])
     except Exception:
         info["configuration"] = "invalid"
-        info["issues"].append("Configuration invalid; correct config.toml")
+        info["issues"].append(f"Settings file is invalid. Fix: correct or delete {paths.config_file} "
+                              "(defaults are recreated)")
     return info

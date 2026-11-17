@@ -9,7 +9,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from . import __version__, audio, config, credentials, desktop, providers
+from . import __version__, audio, config, credentials, desktop, providers, realtime
 from .errors import AppError, Busy, Conflict
 from .paths import Paths
 from .presets import Presets
@@ -53,6 +53,10 @@ class Engine:
         self._hotkey = None
         self._hotkey_enabled = False
         self._listeners: list = []
+        self._streams: dict[str, realtime.RealtimeStream] = {}
+        self._live_stream: realtime.RealtimeStream | None = None
+        self._live_window = None
+        self.live_window_enabled = not os.environ.get("DICTATION4ME_NO_TRAY")
         self._hotkey_state = "not registered"
         last = self.store.quick()
         if last:
@@ -123,6 +127,9 @@ class Engine:
             self._hotkey_state = "unavailable; use a desktop command shortcut: dictation4me toggle"
 
     def close(self):
+        self._close_live_window()
+        for recording_id in list(self._streams):
+            self._drop_stream(recording_id)
         with self._state_lock:
             self._closing = True
             if self._hotkey:
@@ -147,6 +154,10 @@ class Engine:
     def _touch_state(self, value: str, *, message: str = "", notify: bool = True):
         self._state = value
         self._last_error = message
+        if value in ("CANCELLED", "ERROR", "IDLE") and self._live_window is not None:
+            # Off the state lock: terminating the window process may take a moment.
+            threading.Thread(target=self._close_live_window, daemon=True,
+                             name="dictation-live-close").start()
         for listener in list(self._listeners):
             try:
                 listener(value)
@@ -155,7 +166,7 @@ class Engine:
         if notify and value in ("RECORDING", "READY", "ERROR", "RECOVERABLE_RESULT"):
             labels = {"RECORDING": "Recording started — press shortcut to stop",
                       "READY": "Dictation ready — press shortcut to deliver",
-                      "ERROR": "Dictation needs attention — open Recovery",
+                      "ERROR": "Dictation failed — " + (message or "open Recovery")[:150],
                       "RECOVERABLE_RESULT": "Dictation copied; new shortcut starts another recording"}
             desktop.notify(labels[value])
 
@@ -227,16 +238,86 @@ class Engine:
                 raise AppError("RECOVERY_PENDING", "Resolve/cancel previous quick capture before starting another")
             session = self._new_session(mode, note_id)
             self._session = session
+            stream = self._start_stream(session) if mode == "quick" else None
             try:
                 self._recording = self.recorder_type(self.paths, session["recording_id"], self.settings["audio"])
+                if stream is not None and hasattr(self._recording, "tap"):
+                    self._recording.tap = stream.feed
                 self._recording.start()
-            except Exception:
+            except Exception as exc:
                 self._recording = None
-                self.store.set_recording_error(session["recording_id"], "AUDIO_OPEN_FAILED")
-                self._touch_state("ERROR", message="Microphone unavailable; check audio permissions")
-                raise
+                self._drop_stream(session["recording_id"])
+                code = exc.code if isinstance(exc, AppError) else "AUDIO_OPEN_FAILED"
+                self.store.set_recording_error(session["recording_id"], code)
+                error = exc if isinstance(exc, AppError) else AppError(code, "Cannot open the microphone")
+                self._touch_state("ERROR", message=error.describe())
+                raise error from exc
             self._touch_state("RECORDING")
+            if stream is not None:
+                self._open_live_window()
             return {"state": self._state, **session}
+
+    # ── realtime transcription and live window ──
+    def _start_stream(self, session: dict):
+        if self.settings["stt"]["engine"] != "realtime":
+            return None
+        try:
+            config.require_provider_consent(self.settings, "stt")
+            stream = realtime.RealtimeStream(dict(self.settings["stt"]))
+            stream.start()
+        except AppError as exc:
+            desktop.notify("Live transcription unavailable — the normal model will be used. " + exc.describe()[:120])
+            return None
+        self._streams[session["recording_id"]] = stream
+        self._live_stream = stream
+        return stream
+
+    def _drop_stream(self, recording_id: str):
+        stream = self._streams.pop(recording_id, None)
+        if stream:
+            stream.close()
+        if stream is self._live_stream:
+            self._live_stream = None
+
+    def live_text(self) -> dict:
+        stream = self._live_stream
+        return {"state": self._state, "engine": self.settings["stt"]["engine"],
+                "stream": stream.state if stream else None, "text": stream.text if stream else "",
+                "error": stream.error.describe() if stream and stream.error else "",
+                "shortcut": self.active_shortcut(),
+                "flow": ("paste" if self.settings["quick"]["auto_deliver"]
+                         and self.settings["quick"]["output_mode"] == "attempt-paste"
+                         else "copy" if self.settings["quick"]["auto_deliver"] else "review")}
+
+    def _open_live_window(self):
+        if not (self.settings["quick"]["live_window"] and self.live_window_enabled):
+            return
+        if desktop.session_type() == "headless":
+            return
+        import subprocess
+        import sys
+        try:
+            self._live_window = subprocess.Popen(
+                [sys.executable, "-m", "dictation4me", "live"], stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True,
+                start_new_session=True)
+        except OSError:
+            self._live_window = None
+
+    def _close_live_window(self) -> bool:
+        """Close the live window; return True if one was open (focus must settle)."""
+        proc, self._live_window = self._live_window, None
+        if not proc:
+            return False
+        try:
+            proc.terminate()
+            proc.wait(timeout=3)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        return True
 
     def stop_capture(self) -> dict:
         with self._state_lock:
@@ -279,12 +360,28 @@ class Engine:
             if not r["file_relpath"]:
                 raise AppError("AUDIO_MISSING", "Recording was not finalized")
             config.require_provider_consent(self.settings, "stt")
-            result = self.stt(self.paths.media_path(r["file_relpath"]), stt_cfg)
+            result, model = None, stt_cfg["model"]
+            stream = self._streams.pop(session["recording_id"], None)
+            if stream is not None:
+                try:
+                    text = stream.finish(timeout=20)
+                    if not text:
+                        raise AppError("NO_SPEECH", "No speech was detected in the recording")
+                    result, model = {"text": text, "language": None}, stt_cfg["realtime_model"]
+                except AppError as exc:
+                    if exc.code == "NO_SPEECH":
+                        raise
+                    desktop.notify("Live transcription failed — using the normal model. " + exc.describe()[:120])
+                finally:
+                    if stream is self._live_stream:
+                        self._live_stream = None
+            if result is None:
+                result = self.stt(self.paths.media_path(r["file_relpath"]), stt_cfg)
             if not self._is_live(session, job_id):
                 if not self._closing:
                     self.store.job_status(job_id, "cancelled")
                 return
-            self.store.transcript_saved(r["id"], result["text"], stt_cfg["model"],
+            self.store.transcript_saved(r["id"], result["text"], model,
                                         result.get("language"),
                                         self.settings["quick"]["quick_text_retention_hours"])
             # Note-mode appending uses the capture-time edit seq and CAS. Concurrent
@@ -325,7 +422,7 @@ class Engine:
                         desktop.notify("No speech detected — nothing to deliver. "
                                        "The audio is kept in Recovery.")
                     else:
-                        self._touch_state("ERROR", message=str(exc))
+                        self._touch_state("ERROR", message=exc.describe())
                 else:
                     self.store.job_status(job_id, "cancelled")
         except Exception:
@@ -372,7 +469,10 @@ class Engine:
             if session["generation"] != self._generation:
                 return
             auto = session["mode"] == "quick" and self.settings["quick"]["auto_deliver"]
-            self._touch_state("READY", notify=not auto)
+            # The transcription job already announced READY; do not notify twice.
+            self._touch_state("READY", notify=False)
+        if self._close_live_window() and auto:
+            time.sleep(0.5)  # let the compositor give focus back to the app being dictated into
         if auto:
             try:
                 self.deliver_quick(session["quick_id"])
@@ -483,7 +583,7 @@ class Engine:
                 desktop.notify("Dictation pasted into the active app")
             elif should_paste:
                 reason = getattr(self.clipboard, "last_paste_error", "") or "not available here"
-                desktop.notify("Copied to clipboard — automatic paste failed: " + reason[:90])
+                desktop.notify("Copied to clipboard (paste with Ctrl+V). Automatic paste failed: " + reason[:120])
             else:
                 desktop.notify("Dictation copied — paste with Ctrl+V")
             return {"attempt_id": job_id, "clipboard_status": "copied", "paste_status": status,
@@ -491,7 +591,7 @@ class Engine:
         except AppError as exc:
             self.store.update_delivery(job_id, clipboard="failed", paste="not_attempted")
             with self._state_lock:
-                self._touch_state("READY", message=str(exc))
+                self._touch_state("READY", message=exc.describe())
             raise
 
     def copy_last(self) -> dict:
@@ -539,6 +639,8 @@ class Engine:
                         self._cancelled_jobs.add(latest["id"])
                 if self._session and self._session["quick_id"]:
                     self.store.mark_quick(self._session["quick_id"], "cancelled")
+            if self._session:
+                self._drop_stream(self._session["recording_id"])
             self._generation += 1
             self._session = None
             self._touch_state("CANCELLED")
@@ -728,6 +830,8 @@ class Engine:
             return self.settings
         if action == "config.save":
             return self.save_settings(args.get("changes", {}), args.get("secrets"))
+        if action == "live.get":
+            return self.live_text()
         if action == "paste.status":
             return self.paste_status()
         if action == "paste.setup":
