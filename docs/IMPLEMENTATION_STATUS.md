@@ -57,3 +57,7 @@ See [`qualification/runs/2026-11-17-ui-rewrite/REPORT.md`](../qualification/runs
 ## Release 0.2.0 — 2026-11-17
 
 Released as v0.2.0 (Beta). Real-desktop evidence: [`qualification/runs/`](../qualification/runs/). Remaining NOT RUN gates: Windows interactive desktop, screen reader, IME, HiDPI scaling, X11 session.
+
+## Release 0.3.0 — 2026-11-17
+
+Redesigned interface (docs/ui-redesign/README.md), real paste outcome in the status, PyPI distribution with Trusted Publishing. Verified on KDE Plasma 6.6 Wayland with real input; the NOT RUN gates listed for 0.2.0 still apply.

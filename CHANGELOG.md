@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0 — 2026-11-17
+
+### Interface
+- **Redesigned notebook** modelled on the NativeHTMLKit documentation site: flat neutral surfaces, colour-coded headings, hairlines instead of boxes, compact controls. Built directly on the NativeHTMLKit Python SDK (hand-written HTML/CSS, no UI library, no JavaScript). See `docs/ui-redesign/README.md`.
+- Top bar with tabs, a `Ctrl+K` search pill and a **dictation chip** (state + shortcut; click to start/stop) replaces the sidebar.
+- Denser note list (title and time on one line), document-style editor, AI as a slim side rail.
+- Settings is one page with a docs-style tree that jumps to sections.
+
+### Fixed
+- The status said "Pasted" when automatic pasting had failed; the service now reports the real outcome and the UI says "Copied — paste with Ctrl+V".
+- Paste-permission notifications repeated "Fix:" twice.
+- While KDE's first-time "Remote Control" dialog is open (it can appear behind the window), the status explains the wait.
+
+### Distribution
+- Published on PyPI: `uv tool install dictation4me`. Releases are uploaded from GitHub Actions with Trusted Publishing.
+
 ## 0.2.0 — 2026-11-17
 
 First release of the rewritten Dictation4me: a background service with a native notebook, replacing the 0.1.x Tk prototype. Settings from 0.1.x are not migrated.

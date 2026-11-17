@@ -1,4 +1,4 @@
-# UI redesign (branch `ui/sdk-redesign`) — for review
+# Interface design (since 0.3.0)
 
 A flatter, more compact notebook modelled on the [NativeHTMLKit documentation site](https://nativehtmlkit.github.io/). It is built directly on the NativeHTMLKit Python SDK, with hand-written HTML/CSS and Python callbacks: no UI library, no JavaScript. All functionality of 0.2.0 is kept; only the layout and visual design changed.
 
@@ -35,7 +35,7 @@ What was deliberately *not* copied: the large padded cards. Remaining framed ele
 | **AI rail** | **Settings — Behaviour** |
 | ![AI](ai-rail.png) | ![Behaviour](settings-behaviour.png) |
 
-## Fixes found during this review (also apply to 0.2.0)
+## Fixes found during the redesign
 
 - The status said **"Pasted"** even when automatic pasting failed. The service now reports the real delivery outcome, and the UI shows "Copied — paste with Ctrl+V" when pasting didn't happen.
 - Paste-permission errors repeated "Fix:" twice in notifications.

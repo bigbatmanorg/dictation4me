@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dictation4me"
-version = "0.2.0"
+version = "0.3.0"
 description = "System-wide voice dictation, live transcription and AI-assisted notes for KDE Plasma (Wayland)"
 readme = "README.md"
 requires-python = ">=3.12"

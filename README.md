@@ -5,13 +5,14 @@ Live transcription, AI-assisted voice notes and a native notebook for KDE Plasma
 Your own speech and AI servers. Your notes stay on your computer.</p>
 
 <p align="center">
+<a href="https://pypi.org/project/dictation4me/"><img alt="PyPI" src="https://img.shields.io/pypi/v/dictation4me"></a>
 <a href="https://github.com/bigbatmanorg/dictation4me/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/bigbatmanorg/dictation4me"></a>
-<a href="https://github.com/bigbatmanorg/dictation4me/actions"><img alt="CI" src="https://github.com/bigbatmanorg/dictation4me/actions/workflows/ci.yml/badge.svg"></a>
+<a href="https://github.com/bigbatmanorg/dictation4me/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/bigbatmanorg/dictation4me/actions/workflows/ci.yml/badge.svg"></a>
 <img alt="Python" src="https://img.shields.io/badge/python-3.12%2B-blue">
 <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
 </p>
 
-![Live dictation into any app](docs/screenshots/live-window.png)
+![Live dictation into any app](https://raw.githubusercontent.com/bigbatmanorg/dictation4me/main/docs/screenshots/live-window.png)
 
 ## Features
 
@@ -25,62 +26,84 @@ Your own speech and AI servers. Your notes stay on your computer.</p>
 
 | Notes | AI rewrite proposal |
 |---|---|
-| ![Notes](docs/screenshots/notes.png) | ![AI rewrite](docs/screenshots/ai-rewrite.png) |
+| ![Notes](https://raw.githubusercontent.com/bigbatmanorg/dictation4me/main/docs/screenshots/notes.png) | ![AI rewrite](https://raw.githubusercontent.com/bigbatmanorg/dictation4me/main/docs/screenshots/ai-rewrite.png) |
 | **Voice note with live text** | **Settings** |
-| ![Voice note](docs/screenshots/voice-note-live.png) | ![Settings](docs/screenshots/settings-dictation.png) |
+| ![Voice note](https://raw.githubusercontent.com/bigbatmanorg/dictation4me/main/docs/screenshots/voice-note-live.png) | ![Settings](https://raw.githubusercontent.com/bigbatmanorg/dictation4me/main/docs/screenshots/settings-dictation.png) |
 
 ## Install
 
 **1. System packages** (Linux, once):
 
 ```sh
-sudo apt install libportaudio2 pipewire-alsa wl-clipboard      # Debian/Ubuntu
+sudo apt install libportaudio2 pipewire-alsa wl-clipboard      # Debian / Ubuntu
 sudo dnf install portaudio pipewire-alsa wl-clipboard          # Fedora
 ```
 
-**2. Install with [uv](https://docs.astral.sh/uv/) straight from GitHub:**
+**2. Install from PyPI with [uv](https://docs.astral.sh/uv/getting-started/installation/)** (recommended):
 
 ```sh
-# latest release
-uv tool install git+https://github.com/bigbatmanorg/dictation4me@v0.2.0
-
-# or the release wheel
-uv tool install https://github.com/bigbatmanorg/dictation4me/releases/download/v0.2.0/dictation4me-0.2.0-py3-none-any.whl
-
-# or the development version (main branch)
-uv tool install git+https://github.com/bigbatmanorg/dictation4me
+uv tool install dictation4me
 ```
 
-**3. Register the app** (menu entry, autostart, and what KDE needs for the shortcut):
+This puts the `dictation4me` command on your `PATH` in its own isolated environment. If the command is not found afterwards, run `uv tool update-shell` and open a new terminal.
+
+**3. Register the app** (menu entry and autostart; KDE needs the menu entry to grant the shortcut and automatic pasting):
 
 ```sh
 dictation4me init --autostart
 dictation4me gui
 ```
 
-Requirements: Python 3.12+, glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+), KDE Plasma 6 on Wayland recommended. If `dictation4me` is not found after installing, run `uv tool update-shell` and open a new terminal.
+**Update or remove:**
+
+```sh
+uv tool upgrade dictation4me && dictation4me service restart
+dictation4me uninstall && uv tool uninstall dictation4me      # keeps your notes
+```
+
+<details>
+<summary>Other ways to install</summary>
+
+```sh
+# A specific version from PyPI
+uv tool install dictation4me==0.3.0
+
+# Straight from GitHub (a release tag, or the latest main branch)
+uv tool install git+https://github.com/bigbatmanorg/dictation4me@v0.3.0
+uv tool install git+https://github.com/bigbatmanorg/dictation4me
+
+# With pipx or pip instead of uv
+pipx install dictation4me
+python3 -m pip install --user dictation4me
+```
+
+Release wheels and checksums are also attached to every [GitHub release](https://github.com/bigbatmanorg/dictation4me/releases).
+</details>
+
+Requirements: Python 3.12+, glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+), KDE Plasma 6 on Wayland recommended.
 
 ## Set up in two minutes
 
-1. **Settings › Connections:** enter your speech-to-text server URL and model (e.g. `http://my-server:4000/v1`, `whisper-1`). For live text choose *Transcription mode: Live* and a realtime model (e.g. `asr-realtime`). Add the AI server if you want rewrites. Paste the API key; it is stored in the system keyring.
+1. **Settings › Connections:** enter your speech-to-text server URL and model (e.g. `http://my-server:4000/v1`, `whisper-1`). For live text choose *Mode: Live while you speak* and a realtime model (e.g. `asr-realtime`). Add the AI server if you want rewrites. Paste the API key; it is stored in the system keyring.
 2. Approve the shortcut in the KDE dialog (default **Ctrl+Alt+D**).
-3. **Settings › Dictation › Shortcut behaviour:** *type the text into the active app*, then click **Allow automatic pasting…** and approve once.
+3. **Settings › Dictation › Behaviour:** *Stop, then type the text into the active app*, then click **Allow automatic pasting…** and approve once.
 4. Click into any text field, press **Ctrl+Alt+D**, speak, press **Ctrl+Alt+D**.
 
-Running LiteLLM + vLLM? There's a ready-made config in the [user guide appendix](docs/USER_GUIDE.md#appendix-litellm--vllm-server-example).
+Running LiteLLM + vLLM? There's a ready-made config in the [user guide appendix](https://github.com/bigbatmanorg/dictation4me/blob/main/docs/USER_GUIDE.md#appendix-litellm--vllm-server-example).
 
 ## Documentation
 
-- 📖 **[User guide](docs/USER_GUIDE.md):** install, setup, daily use, every setting, CLI, privacy, troubleshooting
-- 🧩 [Architecture](docs/ARCHITECTURE_IMPLEMENTED.md) · [UX review](docs/UX_REVIEW.md) · [Design specifications](design-spec/)
-- ✅ [Implementation status](docs/IMPLEMENTATION_STATUS.md) and [qualification evidence](qualification/runs/)
-- 📝 [Changelog](CHANGELOG.md)
+- 📖 **[User guide](https://github.com/bigbatmanorg/dictation4me/blob/main/docs/USER_GUIDE.md):** install, setup, daily use, every setting, CLI, privacy, troubleshooting
+- 🎨 [Interface design](https://github.com/bigbatmanorg/dictation4me/blob/main/docs/ui-redesign/README.md) · [UX review](https://github.com/bigbatmanorg/dictation4me/blob/main/docs/UX_REVIEW.md) · [Architecture](https://github.com/bigbatmanorg/dictation4me/blob/main/docs/ARCHITECTURE_IMPLEMENTED.md)
+- ✅ [Implementation status](https://github.com/bigbatmanorg/dictation4me/blob/main/docs/IMPLEMENTATION_STATUS.md) and [qualification evidence](https://github.com/bigbatmanorg/dictation4me/tree/main/qualification/runs)
+- 📝 [Changelog](https://github.com/bigbatmanorg/dictation4me/blob/main/CHANGELOG.md)
 
 ## Quick reference
 
 | | |
 |---|---|
 | Dictate into any app | **Ctrl+Alt+D**, speak, **Ctrl+Alt+D** |
+| Start/stop from the window | the dictation chip in the top-right corner |
 | Open the notebook | app menu, tray icon, or `dictation4me gui` |
 | New note / save version / search | **Ctrl+N** / **Ctrl+S** / **Ctrl+K** |
 | Something wrong? | `dictation4me doctor` |
@@ -108,8 +131,8 @@ uv run ruff check src tests && uv run pytest -q
 uv run dictation4me gui
 ```
 
-Tests use isolated profiles (`DICTATION4ME_HOME`) and never touch your real shortcut, tray or keyring. Real-desktop behaviour is verified separately and recorded under [`qualification/runs/`](qualification/runs/).
+Tests use isolated profiles (`DICTATION4ME_HOME`) and never touch your real shortcut, tray or keyring. Real-desktop behaviour is verified separately and recorded under [`qualification/runs/`](https://github.com/bigbatmanorg/dictation4me/tree/main/qualification/runs). Releases are published to PyPI from GitHub Actions with Trusted Publishing.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/bigbatmanorg/dictation4me/blob/main/LICENSE).

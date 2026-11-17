@@ -52,20 +52,22 @@ sudo dnf install portaudio pipewire-alsa wl-clipboard
 | `pipewire-alsa` | Lets PortAudio record through PipeWire. Without it raw devices often reject 16 kHz and recording fails or drops audio. |
 | `wl-clipboard` | Clipboard on Wayland (`xclip` on X11). |
 
-### Install with uv from GitHub
+### Install from PyPI (recommended)
 
 ```sh
-# Latest release
-uv tool install git+https://github.com/bigbatmanorg/dictation4me@v0.2.0
-
-# Or the release wheel
-uv tool install https://github.com/bigbatmanorg/dictation4me/releases/download/v0.2.0/dictation4me-0.2.0-py3-none-any.whl
-
-# Or the current development version
-uv tool install git+https://github.com/bigbatmanorg/dictation4me
+uv tool install dictation4me
 ```
 
 `uv tool install` creates an isolated environment and puts `dictation4me` on your `PATH` (usually `~/.local/bin`). If the command isn't found, run `uv tool update-shell` and open a new terminal.
+
+Other options:
+
+```sh
+uv tool install dictation4me==0.3.0                                        # a specific version
+uv tool install git+https://github.com/bigbatmanorg/dictation4me@v0.3.0    # a GitHub release tag
+uv tool install git+https://github.com/bigbatmanorg/dictation4me           # latest main branch
+pipx install dictation4me                                                  # pipx instead of uv
+```
 
 ### Register the app
 
@@ -87,7 +89,7 @@ uv run dictation4me gui
 
 ## 3. First-time setup
 
-Open **Dictation4me** from the application menu (or run `dictation4me gui`), then go to **Settings**.
+Open **Dictation4me** from the application menu (or run `dictation4me gui`), then open the **Settings** tab. Settings is one page; the tree on the left jumps to each section.
 
 ![Settings — Connections](screenshots/settings-connections.png)
 
@@ -98,7 +100,7 @@ Open **Dictation4me** from the application menu (or run `dictation4me gui`), the
 | Field | What to enter |
 |---|---|
 | Server URL | The OpenAI-compatible base URL, e.g. `http://my-server:4000/v1`. Plain `http://` works for home-network names (`pgx`, `server.lan`, private IPs); internet servers need `https://`. |
-| Transcription mode | **After you stop** uploads the recording when you finish. **Live while you speak** streams audio and shows words as they come (needs a realtime model). |
+| Mode | **After you stop** uploads the recording when you finish. **Live while you speak** streams audio and shows words as they come (needs a realtime model). |
 | Model | The batch model, e.g. `whisper-1`. It is also the fallback in live mode. |
 | Realtime model | For live mode, e.g. `asr-realtime` (see the [appendix](#appendix-litellm--vllm-server-example)). |
 
@@ -107,12 +109,12 @@ Open **Dictation4me** from the application menu (or run `dictation4me gui`), the
 **API keys:** choose a source for each server:
 
 - **Not needed:** local servers without authentication.
-- **System keyring (recommended):** paste the key into *Paste a new key* and save. It is stored in KDE Wallet / GNOME Keyring / Windows Credential Manager, never in the settings file.
+- **System keyring (recommended):** paste the key into *New key* and save. It is stored in KDE Wallet / GNOME Keyring / Windows Credential Manager, never in the settings file.
 - **Environment variable:** enter the variable name, e.g. `OPENAI_API_KEY`. Variables set in `~/.bashrc` are **not** visible to a service started at login. The key-status line under each server tells you whether the background service can see the key, and **Move key to keyring** fixes it in one click.
 
 If a server is on the internet, tick **Allow sending audio and text to remote servers**.
 
-Click **Save settings**, then **Test connection** and **Test with a WAV file…** to check each server. Results appear next to the Save button.
+Click **Save** (bottom bar), then **Test connection** and **Test with a WAV file…** to check each server. Results appear in the save bar.
 
 ### 3.2 Approve the shortcut
 
@@ -120,11 +122,11 @@ The first time the service starts, KDE asks you to confirm the global shortcut (
 
 > Avoid keys KDE already uses. For example, **Meta+L locks the screen**.
 
-### 3.3 Choose how the second press behaves (Settings › Dictation)
+### 3.3 Choose how the second press behaves (Settings › Dictation › Behaviour)
 
 ![Settings — Dictation](screenshots/settings-dictation.png)
 
-| Shortcut behaviour | Press 1 | Press 2 | Press 3 |
+| Second press | Press 1 | Press 2 | Press 3 |
 |---|---|---|---|
 | **Stop, then type the text into the active app** (2 presses) | record | stop → text is typed where your cursor is | new dictation |
 | **Stop, then copy to the clipboard** (2 presses) | record | stop → text is on the clipboard, you paste | new dictation |
@@ -135,7 +137,7 @@ For **typing into the active app** on KDE Wayland, click **Allow automatic pasti
 ## 4. Dictating into any app
 
 1. Put the cursor where the text should go (an email, a chat box, an editor).
-2. Press **Ctrl+Alt+D** and speak. The tray icon turns into a red dot. In live mode a small window shows your words.
+2. Press **Ctrl+Alt+D** and speak. The tray icon and the dictation chip in the notebook turn red. In live mode a small window shows your words.
 3. Press **Ctrl+Alt+D** again. The live window closes, your text is transcribed and typed into the app.
 
 | Live window while you speak | Result typed into the app |
@@ -149,11 +151,11 @@ Good to know:
 - The live window takes keyboard focus while you speak (KDE gives new windows focus). It closes before pasting, so the text lands in your app.
 - If nothing was heard, you get "No speech detected". The audio is kept in Recovery and the next press simply records again.
 
-### Quick dictation page
+### Dictation tab
 
-![Quick dictation](screenshots/quick-dictation.png)
+![Dictation tab](screenshots/quick-dictation.png)
 
-The **Quick dictation** page shows the last result. You can edit it, **Copy again**, **Save as note**, or **Rewrite with AI** (the original transcript is kept). The big button does the same as the shortcut.
+The **Dictation** tab shows the current state and the last result. You can edit it, **Copy again**, **Save as note**, or **Rewrite with AI** (the original transcript is kept). The button in the status line does the same as the shortcut, and so does the **dictation chip** in the top-right corner of every tab.
 
 ### Tray icon
 
@@ -165,8 +167,8 @@ The microphone in the system tray shows the state (red dot while recording, a wa
 
 ![Notes](screenshots/notes.png)
 
-- **Notes list:** search (Ctrl+K), switch between *Notes*, *Archive* and *Trash*, filter by folder, create folders with the folder button. Pinned notes show a star.
-- **Editor:** title, folder, tags and Markdown text. Changes save automatically ("Saved" in the bottom right). **Preview** renders the Markdown:
+- **Notes list:** search (Ctrl+K or the search pill in the top bar), switch between *Notes*, *Archive* and *Trash*, filter by folder, create folders with the folder button. Pinned notes show a star.
+- **Editor:** title, then the folder · tags line, then Markdown text. Changes save automatically ("Saved" in the bottom right). **Preview** renders the Markdown:
 
   ![Preview](screenshots/notes-preview.png)
 
@@ -184,7 +186,7 @@ If you edit the note while recording, your typing wins: the transcript is not in
 
 ### AI rewrite, versions and history
 
-Click **AI & history**, choose an instruction (e.g. *Meeting summary*) and press **Run**. You get a **proposal**; your note is unchanged until you choose:
+Click **AI** in the note toolbar, choose an instruction (e.g. *Meeting summary*) and press **Run**. You get a **proposal**; your note is unchanged until you choose:
 
 - **Replace note:** the proposal becomes the note; the previous text is kept as a version.
 - **Keep as version:** stored in the note's history only.
@@ -313,8 +315,7 @@ It lists each problem with a fix. Logs are in `~/.local/state/dictation4me/servi
 ## 11. Updating and uninstalling
 
 ```sh
-uv tool upgrade dictation4me                      # if installed from git/a tag
-uv tool install --force git+https://github.com/bigbatmanorg/dictation4me@vX.Y.Z
+uv tool upgrade dictation4me
 dictation4me service restart
 
 dictation4me uninstall        # removes launchers and autostart, keeps notes
