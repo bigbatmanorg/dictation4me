@@ -2,26 +2,43 @@
 
 ## 0.2.0 — 2026-11-17
 
-First release of the replacement implementation (NativeHTMLKit notebook + resident service). It replaces the 0.1.x Tk prototype; settings from 0.1.x are not migrated.
+First release of the rewritten Dictation4me: a background service with a native notebook, replacing the 0.1.x Tk prototype. Settings from 0.1.x are not migrated.
 
-### Added
-- Resident service with a global shortcut state machine (record, transcribe, copy), durable WAV spool, Recovery, and authenticated local IPC.
-- Notebook: folders, tags, pins, archive and trash, Markdown preview, autosave with conflict protection, version history, voice notes, non-destructive AI proposals and custom presets.
-- Independent OpenAI-compatible speech-to-text and chat servers; keys from environment variables or the OS keyring.
-- Redesigned UI (see `docs/UX_REVIEW.md`): always-visible dictation status, state-driven Quick dictation, tabbed Settings with unsaved-changes bar, key-availability status, empty states, toasts and an anchored "More" menu.
-- `credentials.import-env`: move an environment-variable key into the OS keyring so it works when the service starts at login.
+### Dictation
+- **Two-press dictation into any app:** press the shortcut to record, press again to stop. The text is typed into the focused app (KDE Remote Control portal, approved once), copied to the clipboard, or held for review, as you choose.
+- **Live transcription:** stream audio to an OpenAI-style `/v1/realtime` endpoint (e.g. Voxtral on vLLM behind LiteLLM) and watch the words appear in a small live window. The recording is always saved; the batch model takes over if the stream fails.
+- Global shortcut through the KDE GlobalShortcuts portal (X11 key grab and Windows RegisterHotKey adapters included); `dictation4me toggle` for custom bindings.
+- Silent recordings no longer block the shortcut: "No speech detected", audio kept in Recovery.
 
-- Two-press dictation with automatic paste through the KDE RemoteDesktop portal (one-time consent, restore token, one session per service run); "Shortcut behaviour" setting.
-- System tray indicator (StatusNotifierItem + dbusmenu): state icon, tooltip with shortcut, open notebook, start/stop, quit.
-- Realtime transcription over `/v1/realtime` (vLLM/LiteLLM) with a live transcript window; WAV still recorded and batch fallback on failure.
-- Actionable errors: every error code carries a fix hint shown in the UI, notifications, CLI ("How to fix: …") and `doctor`; provider HTTP errors are classified (auth, not found, rate limit, unreachable, timeout).
+### Notebook
+- Notes with folders, tags, pins, archive and trash, Markdown preview, autosave with conflict protection and full version history.
+- **Voice notes** with live text inside the editor; the transcript is appended on Stop (your own typing always wins).
+- **AI rewrite** with eight editable presets plus your own: results are proposals you *Replace*, *Keep as version*, save as *New note* or discard.
+- Quick dictation page with the last result, Copy again, Save as note and AI rewrite.
+- **Recovery** for every failed recording, with the reason and how to fix it.
 
-### Fixed (found on a real KDE Plasma Wayland desktop)
-- Settings could not be saved for plain-HTTP home-network servers (`http://pgx:4000/v1`).
-- `Meta`/`Super`/`Win` shortcut modifiers were rejected; shortcuts are now normalized and rebound live without a restart.
-- The background service died when the notebook window closed (shared systemd cgroup); it now runs in its own user unit.
-- Launchers and autostart pointed at the base Python instead of the virtualenv.
-- Microphone: clean error when PortAudio is missing, fallback to the device's native format, tolerance of a single ALSA overrun.
-- A silent recording no longer blocks the shortcut (`NO_SPEECH` keeps the audio in Recovery and returns to Ready).
-- Portal registration failures now explain the cause (missing desktop entry, KDE-owned binding).
-- Notifications work without `notify-send` (D-Bus fallback).
+### Desktop integration
+- Tray icon (StatusNotifierItem): recording state, open notebook, start/stop, quit.
+- The background service runs as its own systemd user unit and keeps working when the window is closed; optional autostart at login.
+- Notifications for every state change, including why pasting failed.
+
+### Setup and troubleshooting
+- Settings redesigned after a UX review: tabs, plain language, key-availability status with "Move key to keyring", unsaved-changes bar, live shortcut status that says when KDE owns the key.
+- **Every error explains how to fix it**, in the app, notifications, CLI ("How to fix: …") and `dictation4me doctor`.
+- Home-network servers over plain HTTP (`http://pgx:4000/v1`, `*.lan`, private IPs) are accepted; internet servers need HTTPS and explicit approval.
+- API keys from the OS keyring or environment variables only; never written to the settings file.
+- Backup, Markdown export and safe restore into a new profile.
+
+### Fixed during qualification on KDE Plasma Wayland
+- Settings could not be saved for plain-HTTP home-network servers.
+- `Meta`/`Super` shortcut modifiers were rejected; shortcut changes now apply without a restart.
+- The background service died when the notebook window closed.
+- Menu and autostart launchers pointed at the wrong Python interpreter.
+- Microphone: missing PortAudio, devices that refuse 16 kHz, and a single ALSA overrun aborting a recording.
+- AI *Replace note*, *Keep as version* and *New note* failed with "Something went wrong".
+- Backup and restore failed on Windows (SQLite handle left open).
+
+### Known limitations
+- Verified on KDE Plasma 6 Wayland (Debian 13, Ubuntu 26.04). Windows passes the automated tests but has not been verified on a real desktop; it has no tray icon yet.
+- The live window takes keyboard focus while you speak (KDE gives new windows focus); it closes before the text is pasted.
+- No macOS support, no cloud sync, Markdown instead of rich text.

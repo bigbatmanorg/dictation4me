@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dictation4me"
 version = "0.2.0"
-description = "Local-first NativeHTMLKit notes and cross-app AI dictation"
+description = "System-wide voice dictation, live transcription and AI-assisted notes for KDE Plasma (Wayland)"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -21,10 +21,20 @@ dependencies = [
     "python-xlib>=0.33,<0.34; sys_platform == 'linux'",
 ]
 classifiers = [
- "Development Status :: 3 - Alpha", "Environment :: X11 Applications",
+ "Development Status :: 4 - Beta",
+ "Intended Audience :: End Users/Desktop",
  "Programming Language :: Python :: 3.12", "Programming Language :: Python :: 3.13",
+ "Programming Language :: Python :: 3.14",
  "Operating System :: POSIX :: Linux", "Operating System :: Microsoft :: Windows",
+ "Topic :: Multimedia :: Sound/Audio :: Speech", "Topic :: Office/Business",
 ]
+keywords = ["dictation", "speech-to-text", "transcription", "whisper", "kde", "wayland", "notes", "llm"]
+
+[project.urls]
+Homepage = "https://github.com/bigbatmanorg/dictation4me"
+Documentation = "https://github.com/bigbatmanorg/dictation4me/blob/main/docs/USER_GUIDE.md"
+Changelog = "https://github.com/bigbatmanorg/dictation4me/blob/main/CHANGELOG.md"
+Issues = "https://github.com/bigbatmanorg/dictation4me/issues"
 [project.scripts]
 dictation4me = "dictation4me.cli:main"
 [project.gui-scripts]

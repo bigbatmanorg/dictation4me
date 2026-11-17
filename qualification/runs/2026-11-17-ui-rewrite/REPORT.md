@@ -4,14 +4,14 @@ Rewrite of `assets/notebook.html`, `assets/notebook.css` and `gui.py` following 
 
 | Check | Result | Evidence |
 |---|---|---|
-| Notes list, editor, pin toggle with toast | PASS | `../../../docs/screenshots/notes.png` |
-| AI & history inspector closed by default, opens on request; toolbar collapses to icons via container query | PASS | `../../../docs/screenshots/notes-ai-panel.png` |
+| Notes list, editor, pin toggle with toast | PASS | `notes.png` |
+| AI & history inspector closed by default, opens on request; toolbar collapses to icons via container query | PASS | `notes-ai-panel.png` |
 | Anchored "More" popover menu (no JavaScript) | PASS | `note-more-menu.png` |
 | Move to Trash closes menu, shows banner with Restore / Delete forever | PASS | `note-trashed.png` |
 | Quick dictation: single state-driven button: Start, then Stop & transcribe (Cancel visible), then Copy to clipboard; real PipeWire capture; clipboard contained the transcript | PASS | `quick-recording.png`, `quick-ready.png` |
 | Sidebar dictation card mirrors the service state on every screen | PASS | same screenshots |
-| Recovery empty state | PASS | `../../../docs/screenshots/recovery-empty.png` |
-| Settings tabs, unsaved-changes bar, Discard, Save persisted to config.toml | PASS | `settings-unsaved.png`, `../../../docs/screenshots/settings-dictation.png` |
+| Recovery empty state | PASS | `recovery-empty.png` |
+| Settings tabs, unsaved-changes bar, Discard, Save persisted to config.toml | PASS | `settings-unsaved.png`, `settings-dictation.png` |
 | Narrow window (760px headless render): icon sidebar, no unsupported-CSS diagnostics | PASS | `narrow-760px.png` |
 | GUI contract tests (headless SDK harness) | PASS (10) | `pytest tests/test_gui_contract.py` |
 | Screen reader, IME, 125/150% scaling, Windows | NOT RUN | |

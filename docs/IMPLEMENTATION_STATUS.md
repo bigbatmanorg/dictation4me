@@ -53,3 +53,7 @@ See [`qualification/runs/2026-11-17-kde-wayland/REPORT.md`](../qualification/run
 ## Update 2026-11-17 — UI rewrite
 
 See [`qualification/runs/2026-11-17-ui-rewrite/REPORT.md`](../qualification/runs/2026-11-17-ui-rewrite/REPORT.md) and [`UX_REVIEW.md`](UX_REVIEW.md). Screen reader, IME, HiDPI scaling and Windows remain NOT RUN.
+
+## Release 0.2.0 — 2026-11-17
+
+Released as v0.2.0 (Beta). Real-desktop evidence: [`qualification/runs/`](../qualification/runs/). Remaining NOT RUN gates: Windows interactive desktop, screen reader, IME, HiDPI scaling, X11 session.
