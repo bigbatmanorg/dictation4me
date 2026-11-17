@@ -32,6 +32,7 @@ class FakeDocument:
         self.markup = {}
         self.checks = {}
         self.classes = {}
+        self.attributes = {}
         self.events = {}
         self.shortcut_rules = []
         self.last_focus = None
@@ -85,6 +86,18 @@ class FakeDocument:
     def get_checked(self, ident):
         self._assert(ident)
         return self.checks.get(ident, False)
+
+    def set_attribute(self, ident, name, value):
+        self._assert(ident)
+        self.attributes.setdefault(ident, {})[name] = value
+
+    def remove_attribute(self, ident, name):
+        self._assert(ident)
+        self.attributes.setdefault(ident, {}).pop(name, None)
+
+    def hide_popover(self, ident):
+        self._assert(ident)
+        self.classes.setdefault(ident, set()).discard('popover-open')
 
     def show_dialog(self, ident):
         self._assert(ident)
@@ -223,3 +236,56 @@ def test_keyboard_shortcuts_and_small_ai_drawer(ui_harness):
     assert 'drawer-open' in ui.doc.classes['ai-panel']
     ui._click({'element': 'btn-ai-close'})
     assert 'drawer-open' not in ui.doc.classes['ai-panel']
+
+
+def test_dictation_card_follows_service_state(ui_harness):
+    engine, ui, _, _ = ui_harness
+    ui._render_status(engine.status())
+    assert ui.doc.texts['dict-state'] == 'Ready'
+    assert 'state-idle' in ui.doc.classes['dictation-card']
+    status = dict(engine.status(), state='RECORDING', mode='quick')
+    ui._render_status(status)
+    assert ui.doc.texts['dict-action-label'] == 'Stop & transcribe'
+    assert 'state-recording' in ui.doc.classes['quick-hero']
+    assert 'hidden' not in ui.doc.classes['btn-quick-cancel']
+    ui._render_status(dict(status, state='TRANSCRIBING'))
+    assert 'disabled' in ui.doc.attributes['btn-quick-primary']
+    ui._render_status(dict(status, state='READY'))
+    assert ui.doc.texts['quick-primary-label'] == 'Copy to clipboard'
+    assert 'disabled' not in ui.doc.attributes['btn-quick-primary']
+    ui._render_status(None)
+    assert 'state-offline' in ui.doc.classes['dictation-card']
+
+
+def test_settings_dirty_tracking_and_tabs(ui_harness):
+    engine, ui, _, _ = ui_harness
+    ui.show_tab('settings')
+    assert 'hidden' in ui.doc.classes['settings-dirty']
+    ui.doc.set_value('cfg-ai-model', 'm2')
+    ui._input({'element': 'cfg-ai-model'})
+    assert 'hidden' not in ui.doc.classes['settings-dirty']
+    ui.revert_settings()
+    assert ui.doc.values['cfg-ai-model'] == ''
+    assert 'hidden' in ui.doc.classes['settings-dirty']
+    ui._click({'element': 'settab-dictation'})
+    assert 'hidden' not in ui.doc.classes['set-dictation']
+    assert 'hidden' in ui.doc.classes['set-connections']
+
+
+def test_invalid_settings_show_inline_error(ui_harness):
+    engine, ui, _, _ = ui_harness
+    ui.show_tab('settings')
+    ui.doc.set_value('cfg-shortcut', 'Hyper+L')
+    ui._click({'element': 'btn-save-settings'})
+    assert ui.doc.texts['settings-feedback'].startswith('Not saved')
+    assert 'error' in ui.doc.classes['settings-feedback']
+    assert engine.settings['quick']['shortcut'] == 'Ctrl+Alt+D'
+
+
+def test_scope_buttons_and_recovery_empty_state(ui_harness):
+    engine, ui, _, _ = ui_harness
+    ui._click({'element': 'btn-scope-trash'})
+    assert ui.current_scope == 'trash'
+    assert 'Trash is empty' in ui.doc.markup['note-items']
+    ui.show_tab('recovery')
+    assert 'Nothing to recover' in ui.doc.markup['recovery-items']

@@ -1,144 +1,118 @@
-# Dictation4me — Native AI Notes & System-Wide Dictation
+# Dictation4me
 
-**Clean replacement of [`bigbatmanorg/dictation4me`](https://github.com/bigbatmanorg/dictation4me).** Python 3.12+, NativeHTMLKit, local SQLite, separately configurable OpenAI-compatible STT and LLM servers. Designed for **KDE Plasma / Wayland Linux and Windows x64**. No browser, JavaScript, HTTP service, Tk, or Node.js.
+**System-wide voice dictation and AI-assisted notes for KDE Plasma (Wayland) and Windows.** Press a global shortcut in any app, speak, press again, and the transcript is ready to paste. A native notebook keeps voice notes, lets you rewrite text with your own AI instructions, and never changes your text without asking.
 
-> **Status:** implemented source and automated mock/SQLite/HTTP/IPC tests; **not yet certified on a real KDE Wayland or Windows desktop**. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md). This is a developer handoff, not an independently qualified 1.0 release.
+You choose the speech-to-text and AI servers (any OpenAI-compatible endpoint, local or remote). Notes stay in a local SQLite database. No browser, no JavaScript, no cloud account.
 
-## What the app does
+![Notes](docs/screenshots/notes.png)
 
-- Native dark/slate notebook: notes, folders, tags, favorites (pin), archive/trash, Markdown textarea and safe read-only preview, autosaved drafts and immutable revision history.
-- Record a voice note, transcribe it using an endpoint you choose, and append the original transcript to the selected note without overwriting concurrent manual editing. Original recordings and failed requests are recoverable.
-- Transform any note or quick transcription with eight bundled AI presets or your own instructions. AI returns proposals; choose **Use as current**, **Alternative version**, **New note** or **Discard**. The original transcript is retained.
-- Resident global dictation works independently of the notes window. On a configured system-wide shortcut: **press to record → press to stop → press to deliver** after transcription completes. During processing a press is a busy no-op. Delivery defaults to **clipboard only**; paste shortcuts are separately opt-in and never count as proof of insertion.
-- Separate STT/AI model names, base URLs, optional secure keyring credentials, test controls, retention settings and an explicit remote-provider approval checkbox.
-- Backup/restore and Markdown export, recoverable interrupted WAV spool files, CLI diagnostic commands, single-instance resident service, authenticated local IPC.
+| Quick dictation | Settings |
+|---|---|
+| ![Recording](docs/screenshots/quick-recording.png) | ![Connections](docs/screenshots/settings-connections.png) |
 
-## Installation from the provided ZIP
+## Features
 
-Unpack the ZIP into a working directory or copy its files into a **clone** of the existing GitHub repository (preserve `.git` and Git history). **Do not merge the old 0.1.0 implementation files back into the clean replacement.**
+- **Global shortcut workflow:** press to record, press to stop and transcribe, press to copy the result. While processing, presses are ignored. Delivery is clipboard-only by default; sending paste keys is opt-in.
+- **Always-visible status:** the sidebar shows what dictation is doing (Ready, Recording, Transcribing, Text ready, Needs attention) on every screen, alongside desktop notifications.
+- **Notebook:** folders, tags, pins, archive and trash, Markdown with preview, autosave, and a full version history (restoring creates a new version).
+- **Voice notes:** record straight into a note. If you kept typing meanwhile, your typing wins and the transcript waits under *Recordings* to be added.
+- **AI rewrite:** eight built-in instructions plus your own presets. Results are proposals: *Replace note*, *Keep as version*, *New note* or *Discard*.
+- **Nothing is lost:** failed or silent recordings stay in **Recovery** until you retry or discard them.
+- **Private by design:** keys come from an environment variable or the OS keyring (never the config file); remote servers need explicit approval; TLS checks cannot be disabled.
 
-Linux and Windows with [uv](https://docs.astral.sh/uv/):
+## Install
+
+Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), and on Linux glibc 2.39+ (NativeHTMLKit).
+
+**Linux system packages** (Debian/Ubuntu names):
 
 ```sh
-uv sync --group dev
-uv run dictation4me init --autostart
-uv run dictation4me gui
+sudo apt install libportaudio2 pipewire-alsa wl-clipboard
 ```
 
-Or, for an isolated installed tool:
+`libportaudio2` is required for the microphone. `pipewire-alsa` lets PortAudio record through PipeWire; without it, raw ALSA devices often refuse 16 kHz. `wl-clipboard` is needed for clipboard delivery on Wayland. On X11, install `xclip` instead.
+
+**Install and register the app:**
 
 ```sh
-uv tool install .
+uv tool install .            # or: uv sync && uv run dictation4me …
 dictation4me init --autostart
 dictation4me gui
 ```
 
-`init` writes defaults (without credentials) and optionally creates standard Start Menu / desktop autostart entries. `--autostart` starts the **resident service**, not the notebook, on login; omit it if undesired. `uv tool install` uses the environment's native host wheel provided by the NativeHTMLKit Python SDK. There is no need to start a separate LLM server unless you choose to use a local provider.
+`init` writes default settings and installs the desktop entry. The desktop entry is **required for the KDE global shortcut**: the shortcut portal only accepts registered apps. `--autostart` starts the background service at login (not the window).
 
-**NativeHTMLKit prerequisites:** the released Linux Python SDK wheel currently targets x64 with **glibc 2.39+**. KDE Plasma/Wayland and Windows x64 are the development targets; macOS is not currently supported by NativeHTMLKit Core. Check current upstream compatibility in [`nativehtmlkit-python`](https://github.com/nativehtmlkit/nativehtmlkit-python) before installing on another distribution.
+## First run
 
-**Microphone/clipboard prerequisites:** `sounddevice` needs a working microphone and PortAudio on Linux; Windows usually obtains PortAudio with its wheel. KDE Wayland requires `wl-copy` and `wl-paste` for clipboard delivery; X11 requires `xclip`. Optional key simulation uses `ydotool` + an explicitly provisioned `ydotoold`/`/dev/uinput` on Wayland (it is **not** installed or granted permissions by this app), or `xdotool` on X11. On Windows, `RegisterHotKey` and Unicode clipboard use Win32; `SendInput` cannot inject into elevated or secure desktops. Run `dictation4me doctor` to see what's available.
+1. Open **Settings › Connections** and enter the server URL and model for *Speech-to-text* and *AI writing*. Home-network names like `http://pgx:4000/v1` are fine over plain HTTP; internet servers need HTTPS and the "Allow sending… to remote servers" checkbox.
+2. Choose how the API key is provided:
+   - **System keyring** (recommended): paste the key into "Paste a new key" and save.
+   - **Environment variable:** works when the service inherits it, e.g. when started from a terminal. A service started at login does **not** see variables from `~/.bashrc`. The card shows whether the key is available, and **Move key to keyring** fixes it in one click.
+3. Use **Test connection** / **Test with a WAV file…** to check each server.
+4. Approve the shortcut in the KDE dialog that appears the first time (default `Ctrl+Alt+D`).
 
-## Configure your STT and AI backends in the GUI
+### About the global shortcut on KDE
 
-1. Open **Settings → Speech-to-text provider**. Enter an OpenAI-compatible base URL, model alias, and endpoint path (default `/audio/transcriptions`). Set request profile to Minimal, OpenAI standard JSON, or Legacy language hint as required by your endpoint.
-2. Open **Settings → AI writing provider**. Enter a separate compatible base URL, model alias, and endpoint path (`/chat/completions` by default).
-3. For authentication, choose **No key**, **Environment variable**, or **OS keyring**. To save a new token into the OS keyring, paste it in the masked field and save. Keys never go into `config.toml`.
-4. If either endpoint is remote/public, explicitly approve sending audio/text to a remote server using the checkbox. Remote providers can receive and retain the content you send. HTTPS certificate validation remains enabled.
-5. Save settings. Use **Test AI connection** or **Test STT with a WAV file** explicitly. These test actions send content to your configured server; no hidden example note is transmitted.
+The preferred shortcut in Settings is offered to KDE when the app first registers. After that, **KDE owns the key**. Change it in *System Settings › Keyboard › Shortcuts › Dictation4me*. Settings › Dictation shows the key that is actually active and warns when it differs. Avoid keys KDE already uses (for example `Meta+L` locks the screen). If the portal is unavailable, bind a custom KDE shortcut to `dictation4me toggle`.
 
-The UI functions without any configured providers; attempting dictation/STT/AI with an unconfigured model produces an actionable error while preserving recordings. Settings are not prefilled with your credentials or model names.
+## Daily use
 
-## Daily keyboard workflow
-
-| Action | Expected behavior |
+| Action | Result |
 |---|---|
-| Global `Ctrl+Alt+D` (default), first press | Start a new quick microphone recording |
-| Press again while recording | Finalize audio file; submit to configured STT server |
-| Press during STT/AI processing | Ignore; do not begin a new recording or paste partial text |
-| Press when `READY` | Copy finished, optionally manually edited text; optionally send paste keystrokes |
-| Press after delivery | Start a new recording (never auto-repeat the previous paste) |
-| `Ctrl+N` in notebook | Create a new note |
-| `Ctrl+S` in notebook | Save a manual revision/checkpoint |
-| `Ctrl+K` in notebook | Show notebook and focus search |
+| Shortcut, first press | Start recording (notification + sidebar turns red) |
+| Shortcut, second press | Stop and transcribe |
+| Shortcut when *Text ready* | Copy to clipboard; paste with `Ctrl+V` |
+| Shortcut after copying | Start a new recording |
+| `Ctrl+N` / `Ctrl+S` / `Ctrl+K` in the window | New note / save a version (or save settings) / search |
 
-The KDE GlobalShortcuts portal may require user approval; on desktops that cannot register it, create a KDE custom application shortcut to `dictation4me toggle`. Press behavior is the same. On Windows, the startup service registers the hotkey via `RegisterHotKey` and reports conflicts.
+Pasting into other apps can't be verified. Copying to the clipboard can, so the app reports only what it can confirm. On Wayland, automatic pasting needs a separately configured `ydotoold` and is off by default.
 
-**Clipboard/paste security:** Automatic insertion is **off** by default. Clipboard delivery to the OS is verifiable; the receiving application’s acceptance is not. Windows paste attempts are blocked when the original foreground window is no longer focused. KDE Wayland does not expose the original focused field; clipboard-only is the safe default. Optional synthetic paste to the **current** field on Wayland is explicitly labeled unsafe and requires the user's separate uinput authorization. The application does not elevate privileges or bypass OS security.
-
-**Working with recordings:** A voice note recording is appended to the linked note if the note has not changed since capture. If it changed, the original transcript remains accessible in that note's Recordings section so you can explicitly append it. Quick dictation is temporary (default text retention 24 hours); **Save as note** makes the result a durable note. Quick audio is deleted after successful STT by default, but the Settings checkbox can retain it.
-
-## CLI reference
+## Command line
 
 ```sh
-dictation4me gui                 # native notebook
-dictation4me quick-review        # notebook opened on Quick dictation
-dictation4me service start       # detached resident service
-dictation4me service status
-dictation4me service stop
-dictation4me service restart
-dictation4me toggle              # external system shortcut fallback
-dictation4me cancel              # stop active recording/job, keep recoverable WAV
-dictation4me copy-last
-dictation4me paste-last          # EXPLICIT repeat; duplicate paste may occur
-dictation4me doctor --json
+dictation4me gui | quick-review           # open the notebook (or its Quick tab)
+dictation4me service start|stop|status|restart
+dictation4me toggle | cancel              # same as the shortcut / cancel a capture
+dictation4me copy-last | paste-last       # paste-last may duplicate text
+dictation4me doctor --json                # dependency and configuration check
 dictation4me devices
-dictation4me recover list
-dictation4me recover retry RECORDING_ID
-dictation4me recover salvage RECORDING_ID
-dictation4me backup --output ./my-backup.zip
-dictation4me export --output ./notes-export.zip
-dictation4me restore --input ./my-backup.zip --destination ./new-empty-profile
-dictation4me test microphone --seconds 3
-dictation4me test stt --file ./sample.wav
-dictation4me test ai
+dictation4me recover list|retry|salvage|delete [ID]
+dictation4me test microphone|stt --file x.wav|ai|clipboard
+dictation4me backup --output backup.zip
+dictation4me export --output notes.zip
+dictation4me restore --input backup.zip --destination ./new-profile
+dictation4me uninstall [--purge --confirm-purge]
 ```
 
-Restore always writes to a **new, nonexistent folder**. To use a restored profile, launch Dictation4me with `DICTATION4ME_HOME` set to that folder. Backups and exports are ZIP files **without encryption**; store them securely. `dictation4me uninstall` removes app launchers and preserves notes; `--purge --confirm-purge` explicitly erases profile data and must never be used on a shared or production profile.
+`restore` always writes to a new, empty folder; run with `DICTATION4ME_HOME=<folder>` to use it. Backups are unencrypted ZIP files. `uninstall` removes launchers and keeps your notes unless `--purge --confirm-purge` is given.
 
 ## Architecture
 
 ```text
-                   ┌──────────────────────────────────┐
-                   │ NativeHTMLKit Python UI          │
-                   │ Markdown editor, notes, settings │
-                   └─────────────────┬────────────────┘
-                                     │ authenticated localhost JSON RPC
-CLI / shortcut command ──────────────┤
-                                     ▼
-                   ┌──────────────────────────────────┐
-                   │ Python resident service          │
-                   │ recorder, state machine, jobs,   │
-                   │ local OS shortcut/paste adapters │
-                   └───────────┬──────────┬───────────┘
-                               │          │
-                          SQLite/WAV     configured HTTP(S) endpoints
-                                          STT and AI independently
+ NativeHTMLKit notebook (HTML/CSS, Python callbacks) ─┐
+ CLI / desktop shortcut command ──────────────────────┤ authenticated loopback JSON-RPC
+                                                      ▼
+            Resident service (own systemd user unit on Linux)
+            recorder · state machine · jobs · shortcut/clipboard adapters
+                 │                         │
+           SQLite + WAV spool       OpenAI-compatible STT and chat servers
 ```
 
-`src/dictation4me/engine.py` is the service controller. `storage.py` is the SQLite repository. `audio.py` spools PCM16 WAV. `providers.py` contains bounded OpenAI-compatible HTTP requests. `desktop/` isolates Linux/Windows APIs. `gui.py` uses only public NativeHTMLKit Python SDK operations and local HTML/CSS assets. `ipc.py` is a loopback service, not an HTTP server; token and lock files are private. There are no Core/private protocol imports.
+The service keeps running when the window closes. Key modules: `engine.py` (controller), `storage.py` (SQLite), `audio.py` (PCM16 WAV spool), `providers.py` (bounded HTTP clients), `desktop/` (KDE portal, X11, Win32 adapters), `gui.py` + `assets/` (notebook). Design specifications are in [`design-spec/`](design-spec/), the UX rationale in [`docs/UX_REVIEW.md`](docs/UX_REVIEW.md), and the qualification evidence in [`qualification/`](qualification/).
 
-For design rationale, detailed product, UX, data contracts, threat model and roadmap see [`design-spec/`](design-spec/). The executable reference contracts are in [`contracts/`](contracts/); acceptance matrix in [`qualification/acceptance.csv`](qualification/acceptance.csv).
-
-## Local development
+## Development
 
 ```sh
 uv sync --group dev
+uv run ruff check src tests
 uv run pytest -q
-uv run python -m compileall -q src tests
 uv build
-uv run dictation4me doctor --json
 ```
 
-If using Python directly from an unpacked source checkout, set `PYTHONPATH=src` or install the project with `pip install -e .`. Tests use isolated `DICTATION4ME_HOME` directories; never run test keystroke injection against a normal working document. The `test paste` CLI command requires `--i-understand` because it sends actual key input. The Windows and KDE Wayland interactive acceptance runs must be done on those desktops, not inferred from SSH/headless/Xvfb.
+Tests use isolated `DICTATION4ME_HOME` profiles and never register real global shortcuts (`DICTATION4ME_NO_HOTKEY`). Native behaviour (microphone, portal shortcut, focus and paste) must be checked on a real desktop; see [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md).
 
-The package intentionally does not ship an unverified lockfile. The local agent should resolve, test and commit an actual `uv.lock` on the connected development machines.
+## Status and limitations
 
-## Current limitations
+Qualified on KDE Plasma 6 Wayland (Debian 13 and Ubuntu 26.04) with real microphone, portal shortcut, clipboard and OpenAI-compatible servers. **Windows x64 has not been qualified yet.** There is no macOS support, no floating overlay or tray icon (status comes via notifications and the sidebar), no rich-text editor (Markdown source plus preview), and no live streaming transcription.
 
-- No macOS target, no browser, no rich-text `contenteditable` editor, no HTML audio player, no integrated model server, no live streaming transcript, no cloud sync, no agent/plugin framework.
-- System-wide floating overlay is not shipped; status is shown via desktop notifications and the notebook's Quick tab. Existing NativeHTMLKit window-visibility/focus restrictions prevent a guaranteed KDE Wayland overlay. Don't confuse a browser mockup with a working overlay.
-- Clipboard-only delivery is the safe cross-platform baseline. Input injection and focus handling require per-desktop qualification and are not guaranteed.
-- Actual microphone capture, global shortcuts, NativeHTMLKit rendering, IME/screen-reader behavior and Windows native APIs **remain to be qualified interactively**. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md).
-
-**Project license:** MIT. Do not copy your old `0.1.x` configuration onto this clean replacement without reviewing the new schema.
+License: MIT.

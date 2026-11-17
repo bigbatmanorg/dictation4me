@@ -6,141 +6,354 @@
 <link rel="stylesheet" href="notebook.css">
 </head>
 <body>
-<div id="shell" class="shell">
-  <header class="topbar">
-    <div class="brand-mark">◈</div><div class="brand">Dictation<span>4me</span></div>
-    <div class="top-separator"></div><div class="top-subtitle">Notes &amp; Dictation</div>
-    <div class="top-spacer"></div>
-    <span class="service-pill"><i class="service-dot"></i><span id="connection-status">Connecting...</span></span>
-    <button id="btn-new" class="primary small">+ New note</button>
-  </header>
-  <div class="layout">
-    <aside class="sidebar">
-      <div class="side-title">WORKSPACE</div>
-      <button id="nav-notes" class="nav active">▤ &nbsp; Notes</button>
-      <button id="nav-quick" class="nav">◉ &nbsp; Quick dictation</button>
-      <button id="nav-recovery" class="nav">↺ &nbsp; Recovery</button>
-      <div class="sidebar-spacer"></div>
-      <div class="side-divider"></div>
-      <button id="nav-settings" class="nav">⚙ &nbsp; Settings</button>
-      <div class="side-foot">Private &amp; local-first<br>Linux / Windows</div>
-    </aside>
-    <section id="notes-panel" class="screen">
-      <div class="notes-shell">
-        <aside class="notes-list">
-          <div class="section-label">YOUR NOTES</div>
-          <input id="search-input" type="search" placeholder="Search notes..." aria-label="Search notes">
-          <select id="scope-select" aria-label="Note collection">
-            <option value="active">All active notes</option>
-            <option value="archive">Archived notes</option>
-            <option value="trash">Trash</option>
-          </select>
-          <select id="folder-filter" aria-label="Filter notes by folder"><option value="">All folders</option></select>
-          <div id="note-items" class="scroll notes-scroll"><div class="empty-message">No notes yet</div></div>
-          <div class="pager"><button id="btn-prev" class="quiet">Previous</button><span id="page-number">1</span><button id="btn-next" class="quiet">Next</button></div>
-          <div class="folder-footer"><input id="new-folder-name" type="text" placeholder="New folder" aria-label="New folder name"><button id="btn-folder-add" class="small">+</button></div>
-        </aside>
-        <div class="note-workspace">
-          <div class="editor">
-            <div class="editor-top">
-              <div class="breadcrumb">NOTE &nbsp; / &nbsp; <span id="current-note-path">Select a note</span></div>
-              <div class="editor-top-actions">
-                <button id="btn-pin" class="quiet small" title="Pin/unpin note">☆ Pin</button>
-                <button id="btn-archive" class="quiet small">Archive</button>
-                <button id="btn-trash" class="quiet small">Trash</button>
-                <button id="btn-delete-permanently" class="danger small hidden">Delete forever</button>
-              </div>
-            </div>
-            <input id="note-title" class="note-title" type="text" placeholder="Untitled note" aria-label="Note title" maxlength="500">
-            <div class="note-metadata"><select id="note-folder" aria-label="Note folder"><option value="">No folder</option></select><input id="note-tags" type="text" placeholder="Tags, comma separated" aria-label="Note tags"></div>
-            <div class="editor-toolbar">
-              <button id="btn-checkpoint" class="quiet small">Save revision</button>
-              <button id="btn-preview" class="quiet small">Preview</button>
-              <button id="btn-record-note" class="quiet small">● Record voice</button>
-              <button id="btn-stop-note" class="quiet small">■ Stop</button>
-              <button id="btn-copy-note" class="quiet small">Copy</button>
-              <button id="btn-show-ai" class="quiet small">AI tools</button>
-            </div>
-            <textarea id="note-editor" spellcheck="true" placeholder="Write or dictate your note. Markdown is supported." aria-label="Markdown note editor"></textarea>
-            <div id="note-preview" class="markdown-view hidden"></div>
-            <div class="note-bottom"><span id="note-wordcount">0 words</span><span id="save-status">Ready</span></div>
-            <div class="subsection"><div class="panel-header">Recordings <span class="muted">(original audio and transcript)</span></div><div id="note-recordings" class="compact-list"></div></div>
+<div id="shell" class="app">
+
+  <!-- ───────────── Sidebar: navigation + always-visible dictation status ───────────── -->
+  <aside class="sidebar" aria-label="Main navigation">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="#ffffff"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>Dictation<b>4me</b></span>
+    </div>
+
+    <nav class="nav-list">
+      <button id="nav-notes" class="nav active" title="Notes (Ctrl+K to search)">
+        <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z M14 3v5h5 M9 13h7 M9 17h5"/></svg><span>Notes</span>
+      </button>
+      <button id="nav-quick" class="nav">
+        <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0 M12 18v3"/></svg><span>Quick dictation</span>
+      </button>
+      <button id="nav-recovery" class="nav">
+        <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6 M4 4v4h4 M12 8v4l3 2"/></svg><span>Recovery</span><span id="recovery-badge" class="badge hidden">0</span>
+      </button>
+      <button id="nav-settings" class="nav">
+        <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span>Settings</span>
+      </button>
+    </nav>
+
+    <section id="dictation-card" class="dictation-card state-idle" aria-live="polite" aria-label="Dictation status">
+      <div class="dict-head"><i class="dot" aria-hidden="true"></i><strong id="dict-state">Ready</strong></div>
+      <p id="dict-hint" class="dict-hint">Press the shortcut anywhere to dictate.</p>
+      <div class="dict-key"><span class="muted">Shortcut</span><kbd id="dict-key">Ctrl+Alt+D</kbd></div>
+      <button id="btn-dict-action" class="dict-action"><span id="dict-action-label">Start dictation</span></button>
+    </section>
+
+    <div class="service-line"><i class="service-dot" aria-hidden="true"></i><span id="connection-status">Connecting…</span></div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ───────────── Notes ───────────── -->
+    <section id="notes-panel" class="screen notes-screen">
+      <aside class="note-list" aria-label="Notes list">
+        <div class="list-head">
+          <h2>Notes</h2>
+          <button id="btn-new" class="icon-btn primary" title="New note (Ctrl+N)" aria-label="New note">
+            <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+        <div class="search">
+          <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg>
+          <input id="search-input" type="search" placeholder="Search notes" aria-label="Search notes">
+        </div>
+        <div class="segmented" role="group" aria-label="Collection">
+          <button id="btn-scope-active" class="seg active">Notes</button>
+          <button id="btn-scope-archive" class="seg">Archive</button>
+          <button id="btn-scope-trash" class="seg">Trash</button>
+        </div>
+        <div class="folder-row">
+          <select id="folder-filter" aria-label="Filter by folder"><option value="">All folders</option></select>
+          <button id="btn-folder-menu" class="icon-btn" popovertarget="folder-popover" title="New folder" aria-label="New folder">
+            <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z M12 12v5M9.5 14.5h5"/></svg>
+          </button>
+        </div>
+        <div id="folder-popover" class="popover" popover>
+          <label for="new-folder-name">New folder</label>
+          <div class="inline-form"><input id="new-folder-name" type="text" placeholder="Folder name"><button id="btn-folder-add" class="primary">Add</button></div>
+        </div>
+        <div id="note-items" class="note-items" role="list"></div>
+        <div id="pager" class="pager hidden">
+          <button id="btn-prev" class="ghost small">‹ Newer</button><span id="page-number">1</span><button id="btn-next" class="ghost small">Older ›</button>
+        </div>
+        <div id="footer-count" class="list-foot">0 notes</div>
+      </aside>
+
+      <article class="editor-wrap">
+        <div id="trash-banner" class="banner hidden">
+          <span>This note is in the Trash.</span>
+          <button id="btn-restore-note" class="small">Restore</button>
+          <button id="btn-delete-permanently" class="small danger">Delete forever…</button>
+        </div>
+        <header class="editor-bar">
+          <div id="current-note-path" class="crumb">Note</div>
+          <div class="toolbar">
+            <button id="btn-record-note" class="tool record" title="Record a voice note into this note">
+              <i class="rec-dot" aria-hidden="true"></i><span id="record-label">Record</span>
+            </button>
+            <button id="btn-stop-note" class="tool stop hidden" title="Stop recording"><i class="stop-sq" aria-hidden="true"></i><span>Stop</span></button>
+            <button id="btn-preview" class="tool" title="Toggle Markdown preview">
+              <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span id="preview-label">Preview</span>
+            </button>
+            <button id="btn-show-ai" class="tool" title="AI rewrite, versions and history">
+              <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg><span>AI &amp; history</span>
+            </button>
+            <button id="btn-pin" class="tool icon-only" title="Pin note" aria-label="Pin note">
+              <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><span id="pin-label" class="sr">Pin</span>
+            </button>
+            <button id="btn-more" class="tool icon-only" popovertarget="note-menu" title="More actions" aria-label="More actions">
+              <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+            </button>
           </div>
-          <aside id="ai-panel" class="ai-panel">
-            <div class="panel-header"><span class="sparkle">✦</span> AI transformations <button id="btn-ai-close" class="quiet small ai-close">Close</button></div>
-            <p class="hint">Choose a reusable writing instruction. Results are proposals; your note is never replaced automatically.</p>
-            <select id="preset-select" aria-label="AI transformation preset"><option value="">Choose a preset...</option></select>
-            <button id="btn-transform-note" class="primary wide">Transform note</button>
-            <div class="section-label spaced">CURRENT PROPOSAL</div>
-            <div id="proposal-meta" class="hint">No AI proposal selected.</div>
-            <textarea id="proposal-text" class="proposal-text" readonly aria-label="AI proposal preview" placeholder="AI output will appear here."></textarea>
-            <div class="tool-grid"><button id="btn-accept-current" class="primary small">Use as current</button><button id="btn-accept-alternative" class="small">Save alternative</button><button id="btn-accept-new-note" class="small">Create new note</button><button id="btn-discard-proposal" class="small danger">Discard</button></div>
-            <div class="section-label spaced">REVISIONS</div><div id="revisions-list" class="compact-list scroll"></div>
-            <div class="section-label spaced">AI HISTORY</div><div id="proposals-list" class="compact-list scroll"></div>
-          </aside>
+          <div id="note-menu" class="popover menu" popover>
+            <button id="btn-copy-note" class="menu-item">Copy note text</button>
+            <button id="btn-checkpoint" class="menu-item">Save version <kbd>Ctrl+S</kbd></button>
+            <div class="menu-sep"></div>
+            <button id="btn-archive" class="menu-item">Archive</button>
+            <button id="btn-trash" class="menu-item danger">Move to Trash</button>
+          </div>
+        </header>
+
+        <div class="editor-body">
+          <input id="note-title" class="note-title" type="text" placeholder="Untitled" aria-label="Note title" maxlength="500">
+          <div class="note-meta">
+            <select id="note-folder" class="chip-select" aria-label="Folder"><option value="">No folder</option></select>
+            <input id="note-tags" class="chip-input" type="text" placeholder="Add tags, comma separated" aria-label="Tags">
+          </div>
+          <textarea id="note-editor" spellcheck="true" placeholder="Start writing, or press Record to dictate. Markdown is supported." aria-label="Note text (Markdown)"></textarea>
+          <div id="note-preview" class="markdown-view hidden"></div>
+          <details id="recordings-details" class="recordings">
+            <summary>Recordings <span id="recordings-count" class="count">0</span></summary>
+            <div id="note-recordings" class="compact-list"></div>
+          </details>
+        </div>
+        <footer class="editor-foot"><span id="note-wordcount">0 words</span><span id="save-status" class="save-status">Saved</span></footer>
+      </article>
+
+      <aside id="ai-panel" class="inspector" aria-label="AI and history">
+        <div class="inspector-head">
+          <h3>AI rewrite</h3>
+          <button id="btn-ai-close" class="icon-btn" aria-label="Close panel" title="Close">
+            <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <p class="hint">Pick an instruction. You get a proposal to review — your note is never changed until you accept it.</p>
+        <div class="inline-form">
+          <select id="preset-select" aria-label="AI instruction"><option value="">Choose…</option></select>
+          <button id="btn-transform-note" class="primary">Run</button>
+        </div>
+        <div id="proposal-meta" class="proposal-meta">No proposal yet.</div>
+        <textarea id="proposal-text" class="proposal-text" readonly aria-label="AI proposal" placeholder="The rewritten text will appear here."></textarea>
+        <div class="proposal-actions">
+          <button id="btn-accept-current" class="primary small">Replace note</button>
+          <button id="btn-accept-alternative" class="small">Keep as version</button>
+          <button id="btn-accept-new-note" class="small">New note</button>
+          <button id="btn-discard-proposal" class="ghost small">Discard</button>
+        </div>
+        <details class="inspector-group" open>
+          <summary>Versions</summary>
+          <div id="revisions-list" class="compact-list"></div>
+        </details>
+        <details class="inspector-group">
+          <summary>AI history</summary>
+          <div id="proposals-list" class="compact-list"></div>
+        </details>
+      </aside>
+    </section>
+
+    <!-- ───────────── Quick dictation ───────────── -->
+    <section id="quick-panel" class="screen page hidden">
+      <header class="page-head">
+        <div><h1>Quick dictation</h1><p>Dictate into any app with the global shortcut. The last result appears here so you can fix it before pasting.</p></div>
+      </header>
+
+      <div id="quick-hero" class="hero state-idle">
+        <div class="hero-orb" aria-hidden="true"><i></i></div>
+        <div class="hero-text">
+          <div class="hero-title"><strong id="capture-title">Ready to record</strong><span id="quick-state" class="state-chip">Idle</span></div>
+          <p id="capture-detail">Press Ctrl+Alt+D anywhere, or use the button.</p>
+        </div>
+        <div class="hero-actions">
+          <button id="btn-quick-cancel" class="ghost hidden">Cancel</button>
+          <button id="btn-quick-primary" class="primary large"><span id="quick-primary-label">Start recording</span></button>
         </div>
       </div>
-    </section>
-    <section id="quick-panel" class="screen hidden panel-page">
-      <div class="page-header"><div><div class="eyebrow">SYSTEM-WIDE</div><h1>Quick dictation</h1><p>Speak into any app, then copy or deliver the transcription.</p></div><div class="state-label" id="quick-state">Idle</div></div>
-      <div class="quick-layout"><div class="page-main">
-        <div class="surface recording-panel"><div class="record-icon">●</div><div><strong id="capture-title">Ready to record</strong><p id="capture-detail" class="hint">Global shortcut: Ctrl+Alt+D</p></div><div class="right-actions"><button id="btn-quick-record" class="primary">Start recording</button><button id="btn-quick-stop">Stop</button><button id="btn-quick-cancel" class="danger">Cancel</button></div></div>
-        <div class="panel-header spaced">Transcript / output text</div>
-        <textarea id="quick-editor" class="quick-editor" placeholder="Your completed quick transcription will appear here. You can edit it before copying." aria-label="Quick dictation output"></textarea>
-        <div class="action-row"><button id="btn-quick-save" class="small">Save edits</button><button id="btn-quick-copy" class="small">Copy text</button><button id="btn-quick-deliver" class="primary small">Deliver text</button><button id="btn-quick-promote" class="small">Save as note</button></div>
-        <div class="hint" id="quick-feedback">Clipboard delivery does not guarantee insertion into the target field.</div>
-      </div><aside class="page-aside surface"><div class="panel-header">Rewrite quick text</div><p class="hint">The original transcript is retained separately.</p><select id="quick-preset" aria-label="Quick AI preset"></select><button id="btn-quick-transform" class="primary wide">Transform</button><div class="section-label spaced">AI PROPOSAL</div><textarea id="quick-ai-text" readonly aria-label="Quick AI proposal"></textarea><button id="btn-quick-accept-ai" class="small wide">Use proposed text</button></aside></div>
-    </section>
-    <section id="recovery-panel" class="screen hidden panel-page">
-      <div class="page-header"><div><div class="eyebrow">DATA SAFETY</div><h1>Recording recovery</h1><p>Failed or interrupted recordings remain on disk until you decide what to do.</p></div><button id="btn-refresh-recovery">Refresh</button></div>
-      <div id="recovery-items" class="recovery-list scroll"></div>
-      <div class="hint spaced">Retry only after configuring the STT endpoint. A remote provider may charge for repeated requests.</div>
-    </section>
-    <section id="settings-panel" class="screen hidden panel-page settings-scroll scroll">
-      <div class="page-header"><div><div class="eyebrow">PREFERENCES</div><h1>Settings</h1><p>Configure separate speech and writing endpoints. Credentials are not saved in TOML.</p></div><div class="settings-actions"><button id="btn-save-settings" class="primary">Save settings</button><div id="settings-feedback" class="settings-feedback" role="status" aria-live="polite"></div></div></div>
-      <div class="settings-layout">
-        <div class="settings-group surface"><div class="panel-header">Speech-to-text provider</div>
-          <label for="cfg-stt-url">OpenAI-compatible base URL</label><input id="cfg-stt-url" type="url" placeholder="http://127.0.0.1:4000/v1">
-          <div class="form-row"><div><label for="cfg-stt-path">API path</label><input id="cfg-stt-path" type="text"></div><div><label for="cfg-stt-model">Model alias</label><input id="cfg-stt-model" type="text" placeholder="Your STT model"></div></div>
-          <label for="cfg-stt-profile">Request format</label><select id="cfg-stt-profile"><option value="minimal">Minimal: file + model</option><option value="openai-modern">OpenAI standard JSON</option><option value="legacy-language">Legacy with language hint</option></select>
-          <div class="form-row"><div><label for="cfg-stt-source">API key source</label><select id="cfg-stt-source"><option value="none">No key</option><option value="keyring">OS keyring</option><option value="environment">Environment variable</option></select></div><div><label for="cfg-stt-ref">Keyring ID / variable name</label><input id="cfg-stt-ref" type="text" placeholder="e.g. STT_API_KEY"></div></div>
-          <label for="cfg-stt-secret">New API key (saved to keyring)</label><input id="cfg-stt-secret" type="password" placeholder="Leave blank to keep existing">
-          <button id="btn-test-stt">Test STT with a WAV file...</button>
-        </div>
-        <div class="settings-group surface"><div class="panel-header">AI writing provider</div>
-          <label for="cfg-ai-url">OpenAI-compatible base URL</label><input id="cfg-ai-url" type="url" placeholder="http://127.0.0.1:4000/v1">
-          <div class="form-row"><div><label for="cfg-ai-path">API path</label><input id="cfg-ai-path" type="text"></div><div><label for="cfg-ai-model">Model alias</label><input id="cfg-ai-model" type="text" placeholder="Your LLM model"></div></div>
-          <div class="form-row"><div><label for="cfg-ai-source">API key source</label><select id="cfg-ai-source"><option value="none">No key</option><option value="keyring">OS keyring</option><option value="environment">Environment variable</option></select></div><div><label for="cfg-ai-ref">Keyring ID / variable name</label><input id="cfg-ai-ref" type="text" placeholder="e.g. AI_API_KEY"></div></div>
-          <label for="cfg-ai-secret">New API key (saved to keyring)</label><input id="cfg-ai-secret" type="password" placeholder="Leave blank to keep existing">
-          <button id="btn-test-ai">Test AI connection</button>
-          <div class="section-label spaced">PRESET EDITOR</div><select id="cfg-preset-choice" aria-label="Preset to edit"></select><label for="cfg-preset-name">Preset name</label><input id="cfg-preset-name" type="text"><label for="cfg-preset-prompt">Preset instruction</label><textarea id="cfg-preset-prompt" class="preset-edit"></textarea><div class="action-row"><button id="btn-preset-save">Save preset</button><button id="btn-preset-new">Create preset</button><button id="btn-preset-delete" class="danger">Delete</button></div>
-        </div>
-        <div class="settings-group surface"><div class="panel-header">Microphone &amp; quick dictation</div>
-          <label for="cfg-audio-device">Recording device</label><select id="cfg-audio-device"><option value="default">System default</option></select>
-          <label for="cfg-shortcut">Preferred global shortcut (e.g. Ctrl+Alt+D, Meta+D). On KDE the first registration asks you to confirm; later changes are made in System Settings › Shortcuts.</label><input id="cfg-shortcut" type="text" placeholder="Ctrl+Alt+D">
-          <p id="cfg-hotkey-status" class="hint">Shortcut status: unknown</p>
-          <div class="form-row"><div><label for="cfg-output">Output mode</label><select id="cfg-output"><option value="clipboard">Clipboard only</option><option value="attempt-paste">Try pasting into target</option></select></div><div><label for="cfg-paste-shortcut">Paste shortcut</label><select id="cfg-paste-shortcut"><option value="Ctrl+V">Ctrl+V</option><option value="Ctrl+Shift+V">Ctrl+Shift+V</option><option value="Shift+Insert">Shift+Insert</option></select></div></div>
-          <label class="checkline"><input id="cfg-auto-deliver" type="checkbox"> Automatically deliver when transcription completes</label>
-          <label class="checkline"><input id="cfg-unsafe-wayland" type="checkbox"> Allow synthetic paste to current Wayland focus (requires separately authorized ydotoold)</label>
-          <label for="cfg-auto-preset">Automatic quick-text rewrite</label><select id="cfg-auto-preset"><option value="">Disabled (recommended)</option></select>
-          <label for="cfg-retention">Keep quick transcription history</label><select id="cfg-retention"><option value="24">24 hours</option><option value="168">7 days</option><option value="0">Delete on cleanup</option><option value="-1">Forever</option></select>
-          <label class="checkline"><input id="cfg-retain-quick-audio" type="checkbox"> Retain original audio for successful quick dictation</label>
-          <label class="checkline"><input id="cfg-remote-approved" type="checkbox"> I approve sending recordings/notes to configured remote STT or AI servers</label>
-          <p class="hint">Local endpoints do not require remote approval. Remote services may store your uploaded audio and text. Changing a provider address requires reviewing this setting.</p>
-          <p class="hint">The global shortcut will work through the portal when permitted, or by binding <code>dictation4me toggle</code> in KDE. Closing this notebook does not stop the resident service.</p>
+
+      <div class="card">
+        <div class="card-head"><h3>Last result</h3><span id="quick-feedback" class="hint">Edits are saved automatically.</span></div>
+        <textarea id="quick-editor" class="quick-editor" placeholder="Your transcription will appear here. You can edit it before copying." aria-label="Last dictation result"></textarea>
+        <div class="action-row">
+          <button id="btn-quick-copy">Copy again</button>
+          <button id="btn-quick-promote">Save as note</button>
         </div>
       </div>
+
+      <details class="card disclosure">
+        <summary>Rewrite with AI</summary>
+        <p class="hint">The original transcript is kept. Accepting replaces only the text above.</p>
+        <div class="inline-form">
+          <select id="quick-preset" aria-label="AI instruction"></select>
+          <button id="btn-quick-transform" class="primary">Rewrite</button>
+        </div>
+        <textarea id="quick-ai-text" class="proposal-text" readonly aria-label="AI proposal" placeholder="The proposal appears here."></textarea>
+        <div class="action-row"><button id="btn-quick-accept-ai">Use this text</button></div>
+      </details>
     </section>
-  </div>
+
+    <!-- ───────────── Recovery ───────────── -->
+    <section id="recovery-panel" class="screen page hidden">
+      <header class="page-head">
+        <div><h1>Recovery</h1><p>Recordings that could not be transcribed stay here until you retry or discard them. Nothing is deleted automatically.</p></div>
+        <button id="btn-refresh-recovery" class="ghost">Refresh</button>
+      </header>
+      <div id="recovery-items" class="recovery-list"></div>
+    </section>
+
+    <!-- ───────────── Settings ───────────── -->
+    <section id="settings-panel" class="screen page settings hidden">
+      <header class="settings-head">
+        <h1>Settings</h1>
+        <div class="tabs" role="tablist">
+          <button id="settab-connections" class="tab active" role="tab">Connections</button>
+          <button id="settab-dictation" class="tab" role="tab">Dictation</button>
+          <button id="settab-presets" class="tab" role="tab">AI presets</button>
+          <button id="settab-privacy" class="tab" role="tab">Privacy &amp; data</button>
+        </div>
+      </header>
+
+      <div id="set-connections" class="set-section">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-head"><h3>Speech-to-text</h3><span class="hint">Turns your recordings into text</span></div>
+            <label for="cfg-stt-url">Server URL</label>
+            <input id="cfg-stt-url" type="url" placeholder="http://127.0.0.1:4000/v1">
+            <label for="cfg-stt-model">Model</label>
+            <input id="cfg-stt-model" type="text" placeholder="e.g. whisper-1">
+            <div class="row-2">
+              <div><label for="cfg-stt-source">API key</label>
+                <select id="cfg-stt-source"><option value="none">Not needed</option><option value="environment">Environment variable</option><option value="keyring">System keyring</option></select></div>
+              <div><label for="cfg-stt-ref">Variable or keyring name</label><input id="cfg-stt-ref" type="text" placeholder="e.g. OPENAI_API_KEY"></div>
+            </div>
+            <label for="cfg-stt-secret">Paste a new key <span class="muted">(stored in the system keyring)</span></label>
+            <input id="cfg-stt-secret" type="password" placeholder="Leave empty to keep the current key">
+            <div class="key-status"><span id="cred-stt-status" class="status-line">Key status unknown</span><button id="btn-import-stt" class="small hidden">Move key to keyring</button></div>
+            <details class="advanced">
+              <summary>Advanced</summary>
+              <label for="cfg-stt-path">Endpoint path</label><input id="cfg-stt-path" type="text">
+              <label for="cfg-stt-profile">Request format</label>
+              <select id="cfg-stt-profile"><option value="minimal">Basic (file and model)</option><option value="openai-modern">OpenAI JSON response</option><option value="legacy-language">With language hint</option></select>
+            </details>
+            <div class="card-foot"><button id="btn-test-stt">Test with a WAV file…</button></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h3>AI writing</h3><span class="hint">Rewrites notes and dictations on request</span></div>
+            <label for="cfg-ai-url">Server URL</label>
+            <input id="cfg-ai-url" type="url" placeholder="http://127.0.0.1:4000/v1">
+            <label for="cfg-ai-model">Model</label>
+            <input id="cfg-ai-model" type="text" placeholder="e.g. gpt-4o-mini">
+            <div class="row-2">
+              <div><label for="cfg-ai-source">API key</label>
+                <select id="cfg-ai-source"><option value="none">Not needed</option><option value="environment">Environment variable</option><option value="keyring">System keyring</option></select></div>
+              <div><label for="cfg-ai-ref">Variable or keyring name</label><input id="cfg-ai-ref" type="text" placeholder="e.g. OPENAI_API_KEY"></div>
+            </div>
+            <label for="cfg-ai-secret">Paste a new key <span class="muted">(stored in the system keyring)</span></label>
+            <input id="cfg-ai-secret" type="password" placeholder="Leave empty to keep the current key">
+            <div class="key-status"><span id="cred-ai-status" class="status-line">Key status unknown</span><button id="btn-import-ai" class="small hidden">Move key to keyring</button></div>
+            <details class="advanced">
+              <summary>Advanced</summary>
+              <label for="cfg-ai-path">Endpoint path</label><input id="cfg-ai-path" type="text">
+            </details>
+            <div class="card-foot"><button id="btn-test-ai">Test connection</button></div>
+          </div>
+        </div>
+        <div class="card consent">
+          <label class="check"><input id="cfg-remote-approved" type="checkbox"><span><strong>Allow sending audio and text to remote servers.</strong> Needed only when a server above is on the internet. Local and home-network servers never need this.</span></label>
+        </div>
+      </div>
+
+      <div id="set-dictation" class="set-section hidden">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-head"><h3>Global shortcut</h3></div>
+            <div class="shortcut-now"><span class="muted">Active now</span><kbd id="hotkey-keycap">—</kbd></div>
+            <p id="cfg-hotkey-status" class="status-line">Checking…</p>
+            <label for="cfg-shortcut">Preferred shortcut</label>
+            <input id="cfg-shortcut" type="text" placeholder="Ctrl+Alt+D">
+            <p class="hint">Use modifiers plus one letter, digit or F-key, e.g. <kbd>Ctrl+Alt+D</kbd> or <kbd>Meta+D</kbd>. On KDE you confirm it once in a system dialog; after that KDE owns the key and you change it in System Settings › Keyboard › Shortcuts.</p>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Microphone</h3></div>
+            <label for="cfg-audio-device">Input device</label>
+            <select id="cfg-audio-device"><option value="default">System default</option></select>
+            <p class="hint">“System default” follows your desktop sound settings.</p>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>After transcription</h3></div>
+            <label for="cfg-output">When you press the shortcut on a finished result</label>
+            <select id="cfg-output"><option value="clipboard">Copy to clipboard (you paste)</option><option value="attempt-paste">Copy and try to paste</option></select>
+            <label for="cfg-paste-shortcut">Paste keys to send</label>
+            <select id="cfg-paste-shortcut"><option value="Ctrl+V">Ctrl+V</option><option value="Ctrl+Shift+V">Ctrl+Shift+V (terminals)</option><option value="Shift+Insert">Shift+Insert</option></select>
+            <label class="check"><input id="cfg-auto-deliver" type="checkbox"><span>Copy automatically as soon as the text is ready</span></label>
+            <label class="check"><input id="cfg-unsafe-wayland" type="checkbox"><span>On Wayland, paste into whatever is focused <span class="muted">(needs a separately set-up ydotoold; may paste into the wrong window)</span></span></label>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Automatic rewrite</h3></div>
+            <label for="cfg-auto-preset">Rewrite every dictation with</label>
+            <select id="cfg-auto-preset"><option value="">Off (recommended)</option></select>
+            <p class="hint">When on, each quick dictation is sent to the AI server before it is ready.</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="set-presets" class="set-section hidden">
+        <div class="card narrow">
+          <div class="card-head"><h3>AI presets</h3><span class="hint">Reusable instructions for “AI rewrite”</span></div>
+          <div class="inline-form">
+            <select id="cfg-preset-choice" aria-label="Preset to edit"></select>
+            <button id="btn-preset-new" class="ghost">New preset</button>
+          </div>
+          <label for="cfg-preset-name">Name</label><input id="cfg-preset-name" type="text" placeholder="e.g. Polite email">
+          <label for="cfg-preset-prompt">Instruction</label>
+          <textarea id="cfg-preset-prompt" class="preset-edit" placeholder="Describe how the text should be rewritten."></textarea>
+          <div class="action-row"><button id="btn-preset-save" class="primary">Save preset</button><button id="btn-preset-delete" class="ghost danger">Delete</button></div>
+        </div>
+      </div>
+
+      <div id="set-privacy" class="set-section hidden">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-head"><h3>Quick dictation history</h3></div>
+            <label for="cfg-retention">Keep finished quick dictations for</label>
+            <select id="cfg-retention"><option value="24">24 hours</option><option value="168">7 days</option><option value="0">Until the next cleanup</option><option value="-1">Forever</option></select>
+            <label class="check"><input id="cfg-retain-quick-audio" type="checkbox"><span>Keep the audio of successful quick dictations</span></label>
+            <p class="hint">Failed recordings are always kept in Recovery until you discard them. Notes are never deleted automatically.</p>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>About</h3></div>
+            <dl id="about-info" class="about"></dl>
+            <p class="hint">Backups and exports: <code>dictation4me backup --output file.zip</code></p>
+          </div>
+        </div>
+      </div>
+
+      <div id="settings-savebar" class="savebar">
+        <span id="settings-feedback" class="settings-feedback" role="status" aria-live="polite"></span>
+        <span id="settings-dirty" class="dirty hidden">Unsaved changes</span>
+        <button id="btn-revert-settings" class="ghost hidden">Discard</button>
+        <button id="btn-save-settings" class="primary">Save settings</button>
+      </div>
+    </section>
+  </main>
+
   <dialog id="confirm-deletion" aria-label="Confirm permanent deletion">
-    <h2 id="delete-title">Confirm deletion</h2>
-    <p id="delete-description">This cannot be undone. Export a backup first if needed.</p>
-    <div class="action-row">
-      <button id="btn-delete-cancel">Cancel</button>
-      <button id="btn-delete-confirm" class="danger">Delete permanently</button>
+    <h2 id="delete-title">Delete permanently?</h2>
+    <p id="delete-description">This cannot be undone.</p>
+    <div class="action-row end">
+      <button id="btn-delete-cancel" class="ghost">Cancel</button>
+      <button id="btn-delete-confirm" class="danger solid">Delete permanently</button>
     </div>
   </dialog>
-  <footer class="statusbar"><span id="status-message">Ready</span><span>NativeHTMLKit · Local SQLite · <span id="footer-count">0 notes</span></span></footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"><span id="status-message"></span></div>
 </div>
 </body>
 </html>

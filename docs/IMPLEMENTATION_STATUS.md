@@ -7,13 +7,13 @@ Snapshot: **2026-11-17**. This package contains actual source implementation, no
 | Component | Code | Locally verified | Native verification |
 |---|---|---|---|
 | SQLite notes, folders, tags, drafts, revisions, FTS, recording metadata | `storage.py` + `assets/schema.sql` | Python/SQLite tests | N/A |
-| Disk-spooled PCM16 WAV and interrupted-file salvage | `audio.py` | Synthetic virtual microphone and WAV tests | Real microphone **NOT RUN** |
-| Independent OpenAI-compatible STT / chat HTTP providers | `providers.py` | httpx MockTransport tests | Actual configured endpoints **NOT RUN** |
+| Disk-spooled PCM16 WAV and interrupted-file salvage | `audio.py` | Synthetic virtual microphone and WAV tests | PipeWire microphone **PASS** (KDE Wayland) |
+| Independent OpenAI-compatible STT / chat HTTP providers | `providers.py` | httpx MockTransport tests | LiteLLM `whisper-1` / chat **PASS** |
 | Non-destructive AI proposals, preset CRUD, source conflict checks | `engine.py`, `presets.py` | Engine async tests | Configured model **NOT RUN** |
-| Hotkey first/second/third press, cancellation and persisted delivery intents | `engine.py`, `storage.py` | Mock desktop tests | Wayland/Windows **NOT RUN** |
+| Hotkey first/second/third press, cancellation and persisted delivery intents | `engine.py`, `storage.py` | Mock desktop tests | KDE Wayland portal key presses **PASS**; Windows **NOT RUN** |
 | Authenticated local IPC, process separation, CLI | `ipc.py`, `service.py`, `cli.py` | Real subprocess service/IPC test | Interactive login lifecycle **NOT RUN** |
-| NativeHTMLKit Python notebook, settings, revision/history, quick, recovery UI | `gui.py` + `assets/notebook.*` | Mock public-SDK contract tests | Real NativeHTMLKit window **NOT RUN** |
-| KDE portal shortcut / Linux clipboard and optional injection | `desktop/portal.py`, `desktop/linux.py`, `desktop/x11.py` | Source review, pure logic | KDE Wayland / X11 **NOT RUN** |
+| NativeHTMLKit Python notebook, settings, revision/history, quick, recovery UI | `gui.py` + `assets/notebook.*` | Mock public-SDK contract tests | Real window with uinput input on KDE Wayland **PASS**; Windows **NOT RUN** |
+| KDE portal shortcut / Linux clipboard and optional injection | `desktop/portal.py`, `desktop/linux.py`, `desktop/x11.py` | Source review, pure logic | KDE portal + Wayland clipboard **PASS**; ydotool paste / X11 **NOT RUN** |
 | Win32 hotkeys / clipboard / safe paste attempts | `desktop/windows.py` | Source review, cross-platform tests | Windows GUI session **NOT RUN** |
 | Backup/Markdown export, safe restore | `portable.py` | ZIP/SQLite round-trip and attack tests | Non-test user data **NOT RUN** |
 | Desktop startup/install scripts | `onboarding.py` | Dry-run test | Actual login/start menu **NOT RUN** |
@@ -49,3 +49,7 @@ This status file must be updated by the local agent with reproducible commands a
 ## Update 2026-11-17 — KDE Wayland troubleshooting run
 
 See [`qualification/runs/2026-11-17-kde-wayland/REPORT.md`](../qualification/runs/2026-11-17-kde-wayland/REPORT.md). Real KDE Wayland GUI, portal global shortcut (real key presses on linuxDEV), PipeWire microphone, Wayland clipboard and real STT/AI endpoints now have PASS evidence. Windows, login autostart, synthetic paste, IME and accessibility remain NOT RUN.
+
+## Update 2026-11-17 — UI rewrite
+
+See [`qualification/runs/2026-11-17-ui-rewrite/REPORT.md`](../qualification/runs/2026-11-17-ui-rewrite/REPORT.md) and [`UX_REVIEW.md`](UX_REVIEW.md). Screen reader, IME, HiDPI scaling and Windows remain NOT RUN.

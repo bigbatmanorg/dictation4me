@@ -5,7 +5,7 @@
 ## Process model
 
 - `dictation4me service run`: pure-Python per-user resident service; creates singleton lock + token-authenticated localhost JSON RPC, opens SQLite in WAL mode, initializes presets, recovers interrupted jobs, registers platform shortcut, and periodically expires completed temporary results. No NativeHTMLKit window is created here.
-- `dictation4me gui`: starts NativeHTMLKit through its **public Python SDK**. Because `Application.start()` reexecutes the backend, service initialization occurs **inside** the `with Application.start(...)` backend role. The GUI has no SQLite writes; calls go through the resident process.
+- `dictation4me gui`: starts NativeHTMLKit through its **public Python SDK**. Because `Application.start()` reexecutes the backend, service initialization occurs **inside** the `with Application.start(...)` backend role. The GUI has no SQLite writes; calls go through the resident process. On Linux the GUI starts a missing service with `systemd-run --user` as its own transient unit (`dictation4me-service-<hash>`), because the NativeHTMLKit host runs the backend inside a systemd unit whose cgroup is killed when the window closes. Environment variables are forwarded by name only (`--setenv=NAME`). Without systemd it falls back to a detached process.
 - `dictation4me toggle`: sends a local `capture.toggle` command, launching the resident service on first use if required. This is also the KDE desktop custom-shortcut fallback.
 - There is no ordinary remote listener and no HTTP server. Control endpoint is `127.0.0.1` with private token and strict message size. Neither SQLite nor the plaintext credentials are exposed through RPC.
 
